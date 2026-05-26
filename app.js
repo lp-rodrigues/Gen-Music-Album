@@ -439,7 +439,7 @@ async function bootArranger() {
         statusText.innerText = "Track 2 Analyzed...";
 
         await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3);
-        statusText.innerText = "Orchestrator Online!";
+        statusText.innerText = "Markov Chain Engine Online!";
         statusText.className = "ready";
     } catch(err) {
         console.error(err);
