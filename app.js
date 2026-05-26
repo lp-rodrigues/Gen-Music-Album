@@ -51,10 +51,8 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
 
     const rawNotes = activeTrack.notes;
     
-    // Cache for raw original loop button triggers
     rawNotes.forEach(n => sequenceContainer.push({ time: n.time, note: n.name, duration: n.duration, velocity: n.velocity }));
 
-    // Group concurrent notes into clean time-blocks to isolate chords
     const timeBlocks = {};
     rawNotes.forEach(note => {
         const roundedTime = Math.round(note.time * 8) / 8; 
@@ -62,7 +60,6 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
         timeBlocks[roundedTime].push(note);
     });
 
-    // --- PHASE A: PROFILE HARMONY LAYER (Notes < MIDI 60) ---
     const chordTimeKeys = Object.keys(timeBlocks).sort((a,b) => a - b);
     let chordHistory = [];
 
@@ -98,7 +95,6 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
         harmonyBrain.transitionMatrix[key].push(next);
     }
 
-    // --- PHASE B: PROFILE EXPRESSIVE MELODY LAYER (Notes >= MIDI 60) ---
     const melodyNotes = rawNotes.filter(n => n.midi >= 60);
     let melodyHistory = [];
 
@@ -142,36 +138,28 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
 function setupAudioEngine() {
     if (polyChordSynth) return;
 
-    // Rich ambient environment space configuration
     reverb = new Tone.Reverb({ decay: 6.5, wet: 0.5 }).toDestination();
     delay = new Tone.FeedbackDelay({ delayTime: "4n.", feedback: 0.35, wet: 0.25 }).connect(reverb);
 
-    // Dynamic background mallet configuration (tuned for original octave register)
     polyChordSynth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sine" },
-        envelope: { 
-            attack: 0.01,   // Responsive response for natural middle octave ranges
-            decay: 0.6,    // Natural fading body
-            sustain: 0.2,  // Soft background cushion
-            release: 1.2   // Smooth bleed out into reverb tail
-        } 
+        envelope: { attack: 0.01, decay: 0.6, sustain: 0.2, release: 1.2 } 
     }).connect(delay); 
     polyChordSynth.volume.value = -14; 
 
-    // Sharp, crisp lead mallet configuration
     expressiveMelodySynth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sine" },
         envelope: { attack: 0.003, decay: 0.15, sustain: 0.1, release: 0.2 }
     }).connect(delay);
 }
 
-// 3. Dual-Engine Adaptive Orchestration Loop
-let currentMelodyDuration = "8n";
-let currentHarmonyDuration = "2n";
+// 3. Native Loop Schedulers (Using Tone.Loop for absolute tempo-slider immunity)
+let harmonyLoopEvent = null;
+let melodyLoopEvent = null;
 
-function runHarmonyTick(time) {
+function triggerHarmonyGeneration(time) {
     if (!isPlayingGenerative) return;
-    
+
     const blendFactor = parseFloat(blendSlider.value);
     const wanderFactor = parseFloat(chaosSlider.value);
     const activeBrain = (Math.random() > blendFactor) ? harmonyBrainA : harmonyBrainB;
@@ -191,26 +179,18 @@ function runHarmonyTick(time) {
     }
 
     currentChordState = nextState;
-    
-    // RESTORED: Read original duration directly from track parameters
-    currentHarmonyDuration = currentChordState.duration;
+    const duration = currentChordState.duration;
 
-    // RESTORED: Splitting the native chord array out directly without modification
     const nativeNotesArray = currentChordState.notes.split("-");
-
-    // Update display markup text
-    chordText.innerText = nativeNotesArray.join(" + ") + ` (${currentHarmonyDuration})`;
+    chordText.innerText = nativeNotesArray.join(" + ") + ` (${duration})`;
     
-    // Play native mallet block chords stretching over native duration spaces
-    polyChordSynth.triggerAttackRelease(nativeNotesArray, currentHarmonyDuration, time, 0.4);
+    polyChordSynth.triggerAttackRelease(nativeNotesArray, duration, time, 0.4);
 
-    // Self-schedules at natural pace intervals
-    Tone.Transport.scheduleOnce((nextTime) => {
-        runHarmonyTick(nextTime);
-    }, `+${currentHarmonyDuration}`);
+    // Dynamic interval mutation locked safely inside Tone.js timeline space
+    harmonyLoopEvent.interval = duration;
 }
 
-function runMelodyTick(time) {
+function triggerMelodyGeneration(time) {
     if (!isPlayingGenerative) return;
 
     const blendFactor = parseFloat(blendSlider.value);
@@ -230,20 +210,13 @@ function runMelodyTick(time) {
     }
 
     currentMelodyState = nextState;
-    currentMelodyDuration = currentMelodyState.duration;
+    const duration = currentMelodyState.duration;
 
-    if (currentMelodyState.isPause || currentMelodyState.pitch === "REST") {
-        Tone.Transport.scheduleOnce((nextTime) => {
-            runMelodyTick(nextTime);
-        }, `+${currentMelodyDuration}`);
-        return;
+    if (!currentMelodyState.isPause && currentMelodyState.pitch !== "REST") {
+        expressiveMelodySynth.triggerAttackRelease(currentMelodyState.pitch, duration, time, currentMelodyState.velocity);
     }
 
-    expressiveMelodySynth.triggerAttackRelease(currentMelodyState.pitch, currentMelodyDuration, time, currentMelodyState.velocity);
-
-    Tone.Transport.scheduleOnce((nextTime) => {
-        runMelodyTick(nextTime);
-    }, `+${currentMelodyDuration}`);
+    melodyLoopEvent.interval = duration;
 }
 
 // 4. UI Interface Control Mechanics Setup
@@ -252,19 +225,34 @@ playBtn.addEventListener('click', async () => {
     if (isPlayingGenerative) {
         playBtn.innerText = "Start Orchestrated Stream";
         isPlayingGenerative = false;
-        if (!isPlayingOrig1 && !isPlayingOrig2) Tone.Transport.stop();
+        
+        if (harmonyLoopEvent) { harmonyLoopEvent.stop(); harmonyLoopEvent.dispose(); }
+        if (melodyLoopEvent) { melodyLoopEvent.stop(); melodyLoopEvent.dispose(); }
+
+        Tone.Transport.stop();
+        Tone.Transport.position = 0;
         chordText.innerText = "None";
     } else {
+        if (isPlayingOrig1) { midi1Btn.click(); }
+        if (isPlayingOrig2) { midi2Btn.click(); }
+
         isPlayingGenerative = true;
         playBtn.innerText = "Stop Orchestrated Stream";
         
         currentChordState = null;
         currentMelodyState = null;
+
+        // FIXED: Using native Tone.Loop vehicles means the execution interval scales 
+        // instantly with the global BPM, eliminating race condition freezes completely.
+        harmonyLoopEvent = new Tone.Loop((time) => {
+            triggerHarmonyGeneration(time);
+        }, "2n").start(0);
+
+        melodyLoopEvent = new Tone.Loop((time) => {
+            triggerMelodyGeneration(time);
+        }, "8n").start(0);
         
         Tone.Transport.start();
-        
-        runHarmonyTick(Tone.Transport.seconds);
-        runMelodyTick(Tone.Transport.seconds);
     }
 });
 
@@ -272,10 +260,15 @@ midi1Btn.addEventListener('click', async () => {
     await Tone.start(); setupAudioEngine();
     if (isPlayingOrig1) {
         if (originalPart1) originalPart1.stop();
-        expressiveMelodySynth.releaseAll(); // Safety release flush on stop
+        expressiveMelodySynth.releaseAll();
+        Tone.Transport.stop();
+        Tone.Transport.position = 0;
         midi1Btn.innerText = "Play Orig 1";
         isPlayingOrig1 = false;
     } else {
+        if (isPlayingGenerative) { playBtn.click(); }
+        if (isPlayingOrig2) { midi2Btn.click(); }
+
         isPlayingOrig1 = true;
         midi1Btn.innerText = "Stop Orig 1";
         if (originalPart1) originalPart1.dispose();
@@ -287,12 +280,13 @@ midi1Btn.addEventListener('click', async () => {
         originalPart1.loop = true;
         originalPart1.loopEnd = originalSequenceData1.reduce((max, n) => Math.max(max, n.time + n.duration), 4);
         
-        // FIXED: Boundary condition event clears stuck note triggers on wrap-around
         originalPart1.add(originalPart1.loopEnd, () => {
             expressiveMelodySynth.releaseAll();
         });
 
-        Tone.Transport.start(); originalPart1.start(0);
+        Tone.Transport.position = 0;
+        Tone.Transport.start(); 
+        originalPart1.start(0);
     }
 });
 
@@ -300,10 +294,15 @@ midi2Btn.addEventListener('click', async () => {
     await Tone.start(); setupAudioEngine();
     if (isPlayingOrig2) {
         if (originalPart2) originalPart2.stop();
-        expressiveMelodySynth.releaseAll(); // Safety release flush on stop
+        expressiveMelodySynth.releaseAll();
+        Tone.Transport.stop();
+        Tone.Transport.position = 0;
         midi2Btn.innerText = "Play Orig 2";
         isPlayingOrig2 = false;
     } else {
+        if (isPlayingGenerative) { playBtn.click(); }
+        if (isPlayingOrig1) { midi1Btn.click(); }
+
         isPlayingOrig2 = true;
         midi2Btn.innerText = "Stop Orig 2";
         if (originalPart2) originalPart2.dispose();
@@ -315,12 +314,13 @@ midi2Btn.addEventListener('click', async () => {
         originalPart2.loop = true;
         originalPart2.loopEnd = originalSequenceData2.reduce((max, n) => Math.max(max, n.time + n.duration), 4);
         
-        // FIXED: Boundary condition event clears stuck note triggers on wrap-around
         originalPart2.add(originalPart2.loopEnd, () => {
             expressiveMelodySynth.releaseAll();
         });
 
-        Tone.Transport.start(); originalPart2.start(0);
+        Tone.Transport.position = 0;
+        Tone.Transport.start(); 
+        originalPart2.start(0);
     }
 });
 
@@ -331,7 +331,6 @@ tempoSlider.addEventListener('input', (e) => {
 });
 chaosSlider.addEventListener('input', (e) => { chaosVal.innerText = e.target.value; });
 
-// Main Boot Execution Pipeline call
 async function bootArranger() {
     try {
         await analyzeMidiPerformance("melody_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1);
