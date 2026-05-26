@@ -3,51 +3,251 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Engine Markov Arranger</title>
-    <link rel="stylesheet" href="styles.css">
+    <title>Generative Music Album Orchestrator</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+            background-color: #f5f5f7;
+            color: #1d1d1f;
+            margin: 0;
+            padding: 40px 20px;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .container {
+            max-width: 600px;
+            width: 100%;
+            background: #ffffff;
+            padding: 30px;
+            border-radius: 20px;
+            box-shadow: 0 8px 30px rgba(0, 0, 0, 0.08);
+            box-sizing: border-box;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            margin-top: 0;
+            margin-bottom: 10px;
+            text-align: center;
+            letter-spacing: -0.5px;
+        }
+
+        #status-text {
+            font-size: 14px;
+            color: #86868b;
+            text-align: center;
+            margin-bottom: 30px;
+            font-weight: 500;
+        }
+
+        #status-text.ready {
+            color: #34c759;
+        }
+
+        .control-group {
+            margin-bottom: 25px;
+        }
+
+        label {
+            display: block;
+            font-size: 14px;
+            font-weight: 600;
+            color: #1d1d1f;
+            margin-bottom: 10px;
+        }
+
+        .slider-container {
+            display: flex;
+            align-items: center;
+            gap: 15px;
+        }
+
+        input[type="range"] {
+            flex: 1;
+            -webkit-appearance: none;
+            appearance: none;
+            height: 6px;
+            border-radius: 3px;
+            background: #e5e5ea;
+            outline: none;
+        }
+
+        input[type="range"]::-webkit-slider-thumb {
+            -webkit-appearance: none;
+            appearance: none;
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            background: #007aff;
+            cursor: pointer;
+            box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+        }
+
+        .value-display {
+            font-size: 14px;
+            font-weight: 500;
+            min-width: 35px;
+            color: #86868b;
+        }
+
+        .button-deck {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+        }
+
+        button {
+            background-color: #007aff;
+            color: white;
+            border: none;
+            padding: 12px 20px;
+            font-size: 14px;
+            font-weight: 500;
+            border-radius: 10px;
+            cursor: pointer;
+            transition: background-color 0.2s, transform 0.1s;
+            outline: none;
+        }
+
+        button:hover {
+            background-color: #0062cc;
+        }
+
+        button:active {
+            transform: scale(0.98);
+        }
+
+        #play-btn {
+            width: 100%;
+            background-color: #34c759;
+            font-size: 16px;
+            font-weight: 600;
+            padding: 16px;
+            margin-bottom: 25px;
+            border-radius: 12px;
+        }
+
+        #play-btn:hover {
+            background-color: #28a745;
+        }
+
+        .monitor-panel {
+            background: #f5f5f7;
+            padding: 15px;
+            border-radius: 12px;
+            border: 1px solid #e5e5ea;
+        }
+
+        .monitor-line {
+            display: flex;
+            justify-content: space-between;
+            font-size: 13px;
+            color: #424245;
+        }
+
+        .monitor-line span:last-child {
+            font-family: monospace;
+            font-weight: bold;
+            color: #007aff;
+        }
+
+        /* Triangle Interpolation Pad Styles */
+        #triangle-container {
+            position: relative;
+            width: 300px;
+            height: 260px;
+            margin: 15px auto;
+            user-select: none;
+            -webkit-user-select: none;
+        }
+
+        #blend-triangle {
+            background: transparent;
+            display: block;
+        }
+
+        #triangle-dot {
+            position: absolute;
+            width: 14px;
+            height: 14px;
+            background: #007aff;
+            border: 2px solid #ffffff;
+            border-radius: 50%;
+            transform: translate(-7px, -7px);
+            pointer-events: none;
+            box-shadow: 0 2px 6px rgba(0,0,0,0.3);
+            transition: left 0.05s ease-out, top 0.05s ease-out;
+        }
+
+        #blend-display-debug {
+            text-align: center;
+            font-size: 13px;
+            font-family: monospace;
+            font-weight: 600;
+            color: #666;
+            margin-top: 8px;
+        }
+    </style>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
+    <script src="https://unpkg.com/@tonejs/midi"></script>
 </head>
 <body>
 
-    <div class="app-container" style="width: 360px;">
-        <h1>Markov Multi-Engine</h1>
-        <div class="status-card">
-            <div style="margin-bottom: 4px;">Status: <span id="status-text" class="loading">Parsing Tracks...</span></div>
-            <div style="font-size: 0.75rem; color: #aaa;">
-                Active Chord: <span id="chord-text" style="color: #03dac6;">None</span>
-            </div>
+<div class="container">
+    <h1>Generative Music Album</h1>
+    <div id="status-text">Parsing Engine Systems...</div>
+
+    <button id="play-btn">Start Generative Stream</button>
+
+    <div class="button-deck">
+        <button id="midi1-btn">Play Orig 1</button>
+        <button id="midi2-btn">Play Orig 2</button>
+        <button id="midi3-btn">Play Orig 3</button>
+    </div>
+
+    <hr style="border: 0; border-top: 1px solid #e5e5ea; margin: 25px 0;">
+
+    <div class="control-group">
+        <label>Song Blend Matrix (Drag inside triangle boundary)</label>
+        <div id="triangle-container">
+            <canvas id="blend-triangle" width="300" height="260"></canvas>
+            <div id="triangle-dot"></div>
         </div>
+        <div id="blend-display-debug">MIDI 1: 33% | MIDI 2: 33% | MIDI 3: 33%</div>
+    </div>
 
-        <div class="control-panel">
-            <button id="play-btn">Start Orchestrated Stream</button>
-            
-            <div class="button-row" style="display: flex; gap: 10px; margin-top: -5px;">
-                <button id="midi1-btn" style="background-color: #3700b3; color: white; flex: 1; font-size: 0.85rem; padding: 10px;">Play Orig 1</button>
-                <button id="midi2-btn" style="background-color: #3700b3; color: white; flex: 1; font-size: 0.85rem; padding: 10px;">Play Orig 2</button>
-            </div>
-            
-            <div class="slider-group">
-                <label for="tempo-slider">Tempo: <span id="tempo-val">120</span> BPM</label>
-                <input type="range" id="tempo-slider" min="20" max="180" value="120">
-            </div>
-
-            <div class="slider-group" style="background: #252525; padding: 10px; border-radius: 6px;">
-                <label for="blend-slider" style="display: flex; justify-content: space-between; color: #03dac6;">
-                    <span>Track 1</span>
-                    <strong>Arranger Blend</strong>
-                    <span>Track 2</span>
-                </label>
-                <input type="range" id="blend-slider" min="0.0" max="1.0" step="0.05" value="0.5">
-            </div>
-
-            <div class="slider-group">
-                <label for="chaos-slider">Human Wander (Chaos): <span id="chaos-val">0.2</span></label>
-                <input type="range" id="chaos-slider" min="0.0" max="1.0" step="0.1" value="0.2">
-            </div>
+    <div class="control-group">
+        <div class="slider-container">
+            <label style="margin-bottom: 0; flex: 1;">Tempo Configuration (BPM)</label>
+            <span class="value-display" id="tempo-val">120</span>
+        </div>
+        <div class="slider-container" style="margin-top: 8px;">
+            <input type="range" id="tempo-slider" min="60" max="200" value="120">
         </div>
     </div>
 
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.7.58/Tone.js"></script>
-    <script src="https://unpkg.com/@tonejs/midi"></script>
-    <script src="app.js"></script>
+    <div class="control-group">
+        <div class="slider-container">
+            <label style="margin-bottom: 0; flex: 1;">Entropy Coefficient (Chaos)</label>
+            <span class="value-display" id="chaos-val">0.05</span>
+        </div>
+        <div class="slider-container" style="margin-top: 8px;">
+            <input type="range" id="chaos-slider" min="0.00" max="1.00" step="0.01" value="0.05">
+        </div>
+    </div>
+
+    <div class="monitor-panel">
+        <div class="monitor-line">
+            <span>Active Target State Event Vector:</span>
+            <span id="chord-text">None</span>
+        </div>
+    </div>
+</div>
+
+<script src="app.js"></script>
 </body>
 </html>

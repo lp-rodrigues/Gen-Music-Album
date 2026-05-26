@@ -2,18 +2,23 @@
 let isPlayingGenerative = false;
 let isPlayingOrig1 = false;
 let isPlayingOrig2 = false;
+let isPlayingOrig3 = false;
 
 let originalPart1 = null;
 let originalPart2 = null;
+let originalPart3 = null;
 let originalSequenceData1 = [];
 let originalSequenceData2 = [];
+let originalSequenceData3 = [];
 
 // Advanced Multi-Engine Multi-Dimensional Markov Brains
 let harmonyBrainA = { states: [], transitionMatrix: {} };
 let harmonyBrainB = { states: [], transitionMatrix: {} };
+let harmonyBrainC = { states: [], transitionMatrix: {} };
 
 let melodyBrainA = { states: [], transitionMatrix: {} };
 let melodyBrainB = { states: [], transitionMatrix: {} };
+let melodyBrainC = { states: [], transitionMatrix: {} };
 
 // Live State Pointers
 let currentChordState = null; 
@@ -22,17 +27,20 @@ let currentMelodyState = null;
 // Audio Synths Pipelines
 let polyChordSynth, expressiveMelodySynth, delay, reverb;
 
+// Live Interpolated Song Target Weights (Calculated via Triangle Geometry)
+let weights = { w1: 0.333, w2: 0.333, w3: 0.333 };
+
 // DOM Selectors
 const statusText = document.getElementById('status-text');
 const chordText = document.getElementById('chord-text');
 const playBtn = document.getElementById('play-btn');
 const midi1Btn = document.getElementById('midi1-btn');
 const midi2Btn = document.getElementById('midi2-btn');
+const midi3Btn = document.getElementById('midi3-btn'); // Added Engine 3 Interface Button
 const tempoSlider = document.getElementById('tempo-slider');
 const tempoVal = document.getElementById('tempo-val');
 const chaosSlider = document.getElementById('chaos-slider');
 const chaosVal = document.getElementById('chaos-val');
-const blendSlider = document.getElementById('blend-slider');
 
 // Helper to quantize random file timings into clean musical notation strings
 const getDurationTag = (dur) => {
@@ -153,6 +161,14 @@ function setupAudioEngine() {
     }).connect(delay);
 }
 
+// Helper: Roulette wheel selector choosing a memory bank based on ternary weights
+function selectBrainFromTernary(brainA, brainB, brainC) {
+    const rand = Math.random();
+    if (rand < weights.w1) return brainA;
+    if (rand < weights.w1 + weights.w2) return brainB;
+    return brainC;
+}
+
 // 3. Native Loop Schedulers (Using Tone.Loop for absolute tempo-slider immunity)
 let harmonyLoopEvent = null;
 let melodyLoopEvent = null;
@@ -160,9 +176,9 @@ let melodyLoopEvent = null;
 function triggerHarmonyGeneration(time) {
     if (!isPlayingGenerative) return;
 
-    const blendFactor = parseFloat(blendSlider.value);
     const wanderFactor = parseFloat(chaosSlider.value);
-    const activeBrain = (Math.random() > blendFactor) ? harmonyBrainA : harmonyBrainB;
+    // UPGRADED: Reads dynamically from the 3-axis ternary distribution weights
+    const activeBrain = selectBrainFromTernary(harmonyBrainA, harmonyBrainB, harmonyBrainC);
 
     if (!currentChordState) {
         currentChordState = activeBrain.states[0] || { notes: "C3-E3-G3", duration: "2n" };
@@ -185,17 +201,15 @@ function triggerHarmonyGeneration(time) {
     chordText.innerText = nativeNotesArray.join(" + ") + ` (${duration})`;
     
     polyChordSynth.triggerAttackRelease(nativeNotesArray, duration, time, 0.4);
-
-    // Dynamic interval mutation locked safely inside Tone.js timeline space
     harmonyLoopEvent.interval = duration;
 }
 
 function triggerMelodyGeneration(time) {
     if (!isPlayingGenerative) return;
 
-    const blendFactor = parseFloat(blendSlider.value);
     const wanderFactor = parseFloat(chaosSlider.value);
-    const activeBrain = (Math.random() > blendFactor) ? melodyBrainA : melodyBrainB;
+    // UPGRADED: Reads dynamically from the 3-axis ternary distribution weights
+    const activeBrain = selectBrainFromTernary(melodyBrainA, melodyBrainB, melodyBrainC);
 
     if (!currentMelodyState) currentMelodyState = activeBrain.states[0] || { pitch: "C4", duration: "8n", velocity: 0.6, isPause: false };
 
@@ -235,6 +249,7 @@ playBtn.addEventListener('click', async () => {
     } else {
         if (isPlayingOrig1) { midi1Btn.click(); }
         if (isPlayingOrig2) { midi2Btn.click(); }
+        if (isPlayingOrig3) { midi3Btn.click(); } // Clear track 3
 
         isPlayingGenerative = true;
         playBtn.innerText = "Stop Orchestrated Stream";
@@ -242,8 +257,6 @@ playBtn.addEventListener('click', async () => {
         currentChordState = null;
         currentMelodyState = null;
 
-        // FIXED: Using native Tone.Loop vehicles means the execution interval scales 
-        // instantly with the global BPM, eliminating race condition freezes completely.
         harmonyLoopEvent = new Tone.Loop((time) => {
             triggerHarmonyGeneration(time);
         }, "2n").start(0);
@@ -256,37 +269,25 @@ playBtn.addEventListener('click', async () => {
     }
 });
 
+// Original Audio Playback Trigger Handlers
 midi1Btn.addEventListener('click', async () => {
     await Tone.start(); setupAudioEngine();
     if (isPlayingOrig1) {
         if (originalPart1) originalPart1.stop();
         expressiveMelodySynth.releaseAll();
-        Tone.Transport.stop();
-        Tone.Transport.position = 0;
-        midi1Btn.innerText = "Play Orig 1";
-        isPlayingOrig1 = false;
+        Tone.Transport.stop(); Tone.Transport.position = 0;
+        midi1Btn.innerText = "Play Orig 1"; isPlayingOrig1 = false;
     } else {
         if (isPlayingGenerative) { playBtn.click(); }
         if (isPlayingOrig2) { midi2Btn.click(); }
-
-        isPlayingOrig1 = true;
-        midi1Btn.innerText = "Stop Orig 1";
+        if (isPlayingOrig3) { midi3Btn.click(); }
+        isPlayingOrig1 = true; midi1Btn.innerText = "Stop Orig 1";
         if (originalPart1) originalPart1.dispose();
-        
-        originalPart1 = new Tone.Part((time, event) => {
-            expressiveMelodySynth.triggerAttackRelease(event.note, event.duration, time, event.velocity || 0.6);
-        }, originalSequenceData1);
-        
+        originalPart1 = new Tone.Part((time, event) => { expressiveMelodySynth.triggerAttackRelease(event.note, event.duration, time, event.velocity || 0.6); }, originalSequenceData1);
         originalPart1.loop = true;
         originalPart1.loopEnd = originalSequenceData1.reduce((max, n) => Math.max(max, n.time + n.duration), 4);
-        
-        originalPart1.add(originalPart1.loopEnd, () => {
-            expressiveMelodySynth.releaseAll();
-        });
-
-        Tone.Transport.position = 0;
-        Tone.Transport.start(); 
-        originalPart1.start(0);
+        originalPart1.add(originalPart1.loopEnd, () => { expressiveMelodySynth.releaseAll(); });
+        Tone.Transport.position = 0; Tone.Transport.start(); originalPart1.start(0);
     }
 });
 
@@ -295,32 +296,41 @@ midi2Btn.addEventListener('click', async () => {
     if (isPlayingOrig2) {
         if (originalPart2) originalPart2.stop();
         expressiveMelodySynth.releaseAll();
-        Tone.Transport.stop();
-        Tone.Transport.position = 0;
-        midi2Btn.innerText = "Play Orig 2";
-        isPlayingOrig2 = false;
+        Tone.Transport.stop(); Tone.Transport.position = 0;
+        midi2Btn.innerText = "Play Orig 2"; isPlayingOrig2 = false;
     } else {
         if (isPlayingGenerative) { playBtn.click(); }
         if (isPlayingOrig1) { midi1Btn.click(); }
-
-        isPlayingOrig2 = true;
-        midi2Btn.innerText = "Stop Orig 2";
+        if (isPlayingOrig3) { midi3Btn.click(); }
+        isPlayingOrig2 = true; midi2Btn.innerText = "Stop Orig 2";
         if (originalPart2) originalPart2.dispose();
-        
-        originalPart2 = new Tone.Part((time, event) => {
-            expressiveMelodySynth.triggerAttackRelease(event.note, event.duration, time, event.velocity || 0.6);
-        }, originalSequenceData2);
-        
+        originalPart2 = new Tone.Part((time, event) => { expressiveMelodySynth.triggerAttackRelease(event.note, event.duration, time, event.velocity || 0.6); }, originalSequenceData2);
         originalPart2.loop = true;
         originalPart2.loopEnd = originalSequenceData2.reduce((max, n) => Math.max(max, n.time + n.duration), 4);
-        
-        originalPart2.add(originalPart2.loopEnd, () => {
-            expressiveMelodySynth.releaseAll();
-        });
+        originalPart2.add(originalPart2.loopEnd, () => { expressiveMelodySynth.releaseAll(); });
+        Tone.Transport.position = 0; Tone.Transport.start(); originalPart2.start(0);
+    }
+});
 
-        Tone.Transport.position = 0;
-        Tone.Transport.start(); 
-        originalPart2.start(0);
+// ADDED: Track 3 Native Playback Event Triggers
+midi3Btn.addEventListener('click', async () => {
+    await Tone.start(); setupAudioEngine();
+    if (isPlayingOrig3) {
+        if (originalPart3) originalPart3.stop();
+        expressiveMelodySynth.releaseAll();
+        Tone.Transport.stop(); Tone.Transport.position = 0;
+        midi3Btn.innerText = "Play Orig 3"; isPlayingOrig3 = false;
+    } else {
+        if (isPlayingGenerative) { playBtn.click(); }
+        if (isPlayingOrig1) { midi1Btn.click(); }
+        if (isPlayingOrig2) { midi2Btn.click(); }
+        isPlayingOrig3 = true; midi3Btn.innerText = "Stop Orig 3";
+        if (originalPart3) originalPart3.dispose();
+        originalPart3 = new Tone.Part((time, event) => { expressiveMelodySynth.triggerAttackRelease(event.note, event.duration, time, event.velocity || 0.6); }, originalSequenceData3);
+        originalPart3.loop = true;
+        originalPart3.loopEnd = originalSequenceData3.reduce((max, n) => Math.max(max, n.time + n.duration), 4);
+        originalPart3.add(originalPart3.loopEnd, () => { expressiveMelodySynth.releaseAll(); });
+        Tone.Transport.position = 0; Tone.Transport.start(); originalPart3.start(0);
     }
 });
 
@@ -331,12 +341,83 @@ tempoSlider.addEventListener('input', (e) => {
 });
 chaosSlider.addEventListener('input', (e) => { chaosVal.innerText = e.target.value; });
 
+
+// =========================================================================
+// 5. GEOMETRIC TERNARY TRIANGLE BLEND PAD CALCULATOR (NEW GRAPHICS ENGINE)
+// =========================================================================
+const canvas = document.getElementById('blend-triangle');
+const ctx = canvas.getContext('2d');
+const dot = document.getElementById('triangle-dot');
+const debugText = document.getElementById('blend-display-debug');
+
+// Formulate geometry locations for an equilateral triangle bounded inside a 300x260 canvas footprint
+const p1 = { x: 150, y: 20 };   // Vertex Top: Song 1 
+const p2 = { x: 20,  y: 240 };  // Vertex Bottom-Left: Song 2
+const p3 = { x: 280, y: 240 };  // Vertex Bottom-Right: Song 3
+
+function drawTriangle() {
+    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    ctx.beginPath(); ctx.moveTo(p1.x, p1.y); ctx.lineTo(p2.x, p2.y); ctx.lineTo(p3.x, p3.y); ctx.closePath();
+    ctx.lineWidth = 3; ctx.strokeStyle = '#cccccc'; ctx.stroke();
+    ctx.fillStyle = '#f9f9f9'; ctx.fill();
+    
+    // Label textual boundaries for absolute visibility
+    ctx.fillStyle = '#333333'; ctx.font = 'bold 12px sans-serif';
+    ctx.fillText('MIDI 1', p1.x - 20, p1.y - 5);
+    ctx.fillText('MIDI 2', p2.x - 15, p2.y + 15);
+    ctx.fillText('MIDI 3', p3.x - 15, p3.y + 15);
+}
+
+// Barycentric Coordinate Math: maps an arbitrary 2D click point to 3 weights relative to vertices
+function updateTernaryWeights(mx, my) {
+    const denominator = ((p2.y - p3.y) * (p1.x - p3.x) + (p3.x - p2.x) * (p1.y - p3.y));
+    let w1 = ((p2.y - p3.y) * (mx - p3.x) + (p3.x - p2.x) * (my - p3.y)) / denominator;
+    let w2 = ((p3.y - p1.y) * (mx - p3.x) + (p1.x - p3.x) * (my - p3.y)) / denominator;
+    let w3 = 1 - w1 - w2;
+
+    // Boundary constraints: ensure the dot stays mathematically bounded within 0-1 range inside the perimeter
+    if (w1 >= 0 && w2 >= 0 && w3 >= 0) {
+        weights.w1 = w1; weights.w2 = w2; weights.w3 = w3;
+        dot.style.left = `${mx}px`; dot.style.top = `${my}px`;
+        debugText.innerText = `MIDI 1: ${Math.round(w1*100)}% | MIDI 2: ${Math.round(w2*100)}% | MIDI 3: ${Math.round(w3*100)}%`;
+    }
+}
+
+// Interaction handling via mouse/touch trackpad inputs
+function handleTriangleInteraction(e) {
+    const rect = canvas.getBoundingClientRect();
+    const mx = (e.clientX || e.touches[0].clientX) - rect.left;
+    const my = (e.clientY || e.touches[0].clientY) - rect.top;
+    updateTernaryWeights(mx, my);
+}
+
+canvas.addEventListener('mousedown', () => {
+    const tracking = (e) => handleTriangleInteraction(e);
+    window.addEventListener('mousemove', tracking);
+    window.addEventListener('mouseup', () => window.removeEventListener('mousemove', tracking), { once: true });
+});
+canvas.addEventListener('touchstart', (e) => {
+    const tracking = (ev) => handleTriangleInteraction(ev);
+    window.addEventListener('touchmove', tracking);
+    window.addEventListener('touchend', () => window.removeEventListener('touchmove', tracking), { once: true });
+});
+
+// Initialization: Draw layout outline canvas framework and center indicator to default state
+drawTriangle();
+updateTernaryWeights(150, 140); 
+
+
+// 6. Main Boot Execution Pipeline call
 async function bootArranger() {
     try {
-        await analyzeMidiPerformance("melody_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1);
+        // RENAMED: Point targets explicitly to your newly refactored midi file architecture
+        await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1);
         statusText.innerText = "Track 1 Analyzed...";
         
-        await analyzeMidiPerformance("melody_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2);
+        await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2);
+        statusText.innerText = "Track 2 Analyzed...";
+
+        await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3);
         statusText.innerText = "Orchestrator Online!";
         statusText.className = "ready";
     } catch(err) {
