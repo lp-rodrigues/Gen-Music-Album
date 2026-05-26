@@ -375,12 +375,33 @@ function updateTernaryWeights(mx, my) {
     let w2 = ((p3.y - p1.y) * (mx - p3.x) + (p1.x - p3.x) * (my - p3.y)) / denominator;
     let w3 = 1 - w1 - w2;
 
-    // Boundary constraints: ensure the dot stays mathematically bounded within 0-1 range inside the perimeter
-    if (w1 >= 0 && w2 >= 0 && w3 >= 0) {
-        weights.w1 = w1; weights.w2 = w2; weights.w3 = w3;
-        dot.style.left = `${mx}px`; dot.style.top = `${my}px`;
-        debugText.innerText = `MIDI 1: ${Math.round(w1*100)}% | MIDI 2: ${Math.round(w2*100)}% | MIDI 3: ${Math.round(w3*100)}%`;
+    // FIXED: Clamp individual raw weights so they never go negative or above 1.0
+    w1 = Math.max(0, Math.min(1, w1));
+    w2 = Math.max(0, Math.min(1, w2));
+    w3 = Math.max(0, Math.min(1, w3));
+
+    // Re-normalize to guarantee that w1 + w2 + w3 always perfectly equals 1.0
+    const sum = w1 + w2 + w3;
+    if (sum > 0) {
+        w1 /= sum;
+        w2 /= sum;
+        w3 /= sum;
     }
+
+    // Assign the polished, safe weights to your generative engine variables
+    weights.w1 = w1; 
+    weights.w2 = w2; 
+    weights.w3 = w3;
+
+    // FIXED: Re-project the UI dot back onto the triangle's physical canvas pixels 
+    // This allows the dot to glide smoothly along the edges without flying away or freezing!
+    const clampedX = w1 * p1.x + w2 * p2.x + w3 * p3.x;
+    const clampedY = w1 * p1.y + w2 * p2.y + w3 * p3.y;
+
+    dot.style.left = `${clampedX}px`; 
+    dot.style.top = `${clampedY}px`;
+    
+    debugText.innerText = `MIDI 1: ${Math.round(w1*100)}% | MIDI 2: ${Math.round(w2*100)}% | MIDI 3: ${Math.round(w3*100)}%`;
 }
 
 // Interaction handling via mouse/touch trackpad inputs

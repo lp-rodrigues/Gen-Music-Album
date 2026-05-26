@@ -170,7 +170,7 @@
             display: block;
         }
 
-        #triangle-dot {
+       #triangle-dot {
             position: absolute;
             width: 14px;
             height: 14px;
@@ -180,7 +180,8 @@
             transform: translate(-7px, -7px);
             pointer-events: none;
             box-shadow: 0 2px 6px rgba(0,0,0,0.3);
-            transition: left 0.05s ease-out, top 0.05s ease-out;
+            /* REMOVE OR COMMENT OUT THIS LINE BELOW TO ELIMINATE LAG: */
+            /* transition: left 0.05s ease-out, top 0.05s ease-out; */
         }
 
         #blend-display-debug {
