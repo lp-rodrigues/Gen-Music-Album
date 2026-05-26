@@ -3,206 +3,75 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Generative Music Album</title>
+    <title>Generative Music Album: Celestial Balance</title>
     <style>
         :root {
-            --bg-color: #0b0b0f;
-            --panel-bg: rgba(20, 20, 25, 0.75);
+            --bg-color: #050508;
+            --panel-bg: rgba(15, 15, 20, 0.85);
             --accent-color: #007aff;
             --success-color: #34c759;
+            --warning-color: #ff9500;
         }
 
         body, html {
-            margin: 0;
-            padding: 0;
-            width: 100%;
-            height: 100%;
-            overflow: hidden;
+            margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden;
             background-color: var(--bg-color);
             font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
             color: #ffffff;
         }
 
-        /* Ambient Fluid Background Canvas Layer */
-        #art-surface {
-            position: absolute;
-            top: 0;
-            left: 0;
-            width: 100%;
-            height: 100%;
-            z-index: 1;
-            cursor: crosshair;
-        }
+        canvas { position: absolute; top: 0; left: 0; width: 100%; height: 100%; z-index: 1; }
 
-        /* Minimalistic Foreground Overlay HUD */
         #art-hud {
-            position: absolute;
-            top: 40px;
-            left: 40px;
-            z-index: 2;
-            pointer-events: none;
-            user-select: none;
+            position: absolute; top: 40px; left: 40px; z-index: 2; pointer-events: none; user-select: none;
         }
+        #art-hud h1 { font-size: 22px; font-weight: 300; letter-spacing: 3px; margin: 0 0 6px 0; text-transform: uppercase; opacity: 0.8; }
+        #status-text { font-size: 11px; letter-spacing: 1px; text-transform: uppercase; opacity: 0.4; }
 
-        #art-hud h1 {
-            font-size: 24px;
-            font-weight: 300;
-            letter-spacing: 3px;
-            margin: 0 0 6px 0;
-            text-transform: uppercase;
-            opacity: 0.8;
-        }
-
-        #status-text {
-            font-size: 11px;
-            letter-spacing: 1px;
-            text-transform: uppercase;
-            opacity: 0.4;
-            transition: color 0.3s;
-        }
-
-        /* Dynamic Floating Cursor Tracker Interaction Dot */
-        #glow-pointer {
-            position: absolute;
-            width: 30px;
-            height: 30px;
-            border-radius: 50%;
-            background: rgba(255, 255, 255, 0.15);
-            border: 1px solid rgba(255, 255, 255, 0.35);
-            box-shadow: 0 0 30px rgba(255, 255, 255, 0.15);
-            transform: translate(-50%, -50%);
-            pointer-events: none;
-            z-index: 2;
-            left: 50%;
-            top: 50%;
-        }
-
-        /* Slide-Out Engineering Panel Infrastructure Drawer Toggle */
         #drawer-toggle {
-            position: absolute;
-            top: 40px;
-            right: 40px;
-            z-index: 10;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #ffffff;
-            width: 44px;
-            height: 44px;
-            border-radius: 50%;
-            cursor: pointer;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-size: 20px;
-            backdrop-filter: blur(10px);
-            -webkit-backdrop-filter: blur(10px);
-            transition: background 0.2s, transform 0.1s;
+            position: absolute; top: 40px; right: 40px; z-index: 10;
+            background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2);
+            color: #ffffff; width: 44px; height: 44px; border-radius: 50%; cursor: pointer;
+            display: flex; align-items: center; justify-content: center; font-size: 20px;
+            backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
         }
-
-        #drawer-toggle:hover { background: rgba(255, 255, 255, 0.18); }
-        #drawer-toggle:active { transform: scale(0.95); }
 
         #tech-drawer {
-            position: absolute;
-            top: 0;
-            right: -380px;
-            width: 380px;
-            height: 100%;
-            background: var(--panel-bg);
-            backdrop-filter: blur(30px);
-            -webkit-backdrop-filter: blur(30px);
-            border-left: 1px solid rgba(255, 255, 255, 0.1);
-            z-index: 9;
-            box-sizing: border-box;
-            padding: 40px;
-            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-            overflow-y: auto;
+            position: absolute; top: 0; right: -380px; width: 380px; height: 100%;
+            background: var(--panel-bg); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
+            border-left: 1px solid rgba(255, 255, 255, 0.1); z-index: 9;
+            box-sizing: border-box; padding: 40px;
+            transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1); overflow-y: auto;
         }
-
         #tech-drawer.open { right: 0; }
 
-        .drawer-header {
-            font-size: 13px;
-            text-transform: uppercase;
-            letter-spacing: 2px;
-            color: rgba(255, 255, 255, 0.4);
-            margin-bottom: 25px;
-            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
-            padding-bottom: 10px;
-        }
+        .drawer-header { font-size: 13px; text-transform: uppercase; letter-spacing: 2px; color: rgba(255, 255, 255, 0.4); margin-bottom: 25px; border-bottom: 1px solid rgba(255, 255, 255, 0.1); padding-bottom: 10px; }
+        #main-art-toggle { width: 100%; background: rgba(255, 255, 255, 0.08); border: 1px solid rgba(255, 255, 255, 0.2); color: #ffffff; padding: 14px; font-size: 12px; letter-spacing: 2px; text-transform: uppercase; border-radius: 8px; cursor: pointer; margin-bottom: 20px; transition: all 0.2s; }
+        #main-art-toggle.active-stream { background: var(--success-color); border-color: var(--success-color); }
 
-        /* Stream Play/Stop Switch Inside the Control Panel */
-        #main-art-toggle {
-            width: 100%;
-            background: rgba(255, 255, 255, 0.08);
-            border: 1px solid rgba(255, 255, 255, 0.2);
-            color: #ffffff;
-            padding: 14px;
-            font-size: 12px;
-            letter-spacing: 2px;
-            text-transform: uppercase;
-            border-radius: 8px;
-            cursor: pointer;
-            transition: all 0.2s ease;
-            margin-bottom: 30px;
+        /* Lock Button styling configuration */
+        #lock-toggle-btn {
+            width: 100%; background: rgba(255, 149, 0, 0.1); border: 1px solid var(--warning-color); color: var(--warning-color);
+            padding: 12px; font-size: 11px; letter-spacing: 1.5px; text-transform: uppercase; border-radius: 6px; cursor: pointer; margin-bottom: 25px; transition: all 0.2s;
         }
-
-        #main-art-toggle:hover {
-            background: #ffffff;
-            color: #000000;
-            box-shadow: 0 4px 20px rgba(255,255,255,0.15);
-        }
-
-        #main-art-toggle.active-stream {
-            background: var(--success-color);
-            border-color: var(--success-color);
-            color: #ffffff;
-        }
-        #main-art-toggle.active-stream:hover {
-            background: #28a745;
-            border-color: #28a745;
-            box-shadow: 0 4px 20px rgba(52,199,89,0.3);
+        #lock-toggle-btn.unlocked {
+            background: rgba(255, 255, 255, 0.05); border-color: rgba(255, 255, 255, 0.2); color: rgba(255, 255, 255, 0.6);
         }
 
         .control-group { margin-bottom: 24px; }
         label { display: block; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.5); margin-bottom: 8px;}
         .slider-wrap { display: flex; align-items: center; gap: 12px; }
         input[type="range"] { flex: 1; accent-color: var(--accent-color); cursor: pointer; }
-        .val-disp { font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.4); min-width: 24px;}
+        .val-disp { font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.4); min-width: 30px; text-align: right; }
         
-        .deck { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-bottom: 20px; }
-        .deck button { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; font-size: 11px; border-radius: 6px; cursor: pointer; transition: background 0.2s; }
-        .deck button:hover { background: rgba(255,255,255,0.1); }
+        .deck { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+        .deck button { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; font-size: 11px; border-radius: 6px; cursor: pointer; }
         .deck button.active { background: var(--accent-color); border-color: var(--accent-color); }
 
-        /* Tech Readout Terminal Monitors */
-        .terminal-panel {
-            background: rgba(0, 0, 0, 0.25);
-            border: 1px solid rgba(255, 255, 255, 0.08);
-            border-radius: 8px;
-            padding: 14px;
-            margin-top: 10px;
-        }
-
-        .terminal-line {
-            display: flex;
-            flex-direction: column;
-            gap: 4px;
-            font-size: 11px;
-            text-transform: uppercase;
-            letter-spacing: 0.5px;
-            color: rgba(255,255,255,0.4);
-        }
-
-        #live-vector-display {
-            font-family: monospace;
-            font-size: 12px;
-            color: var(--accent-color);
-            font-weight: bold;
-            letter-spacing: 0px;
-            text-transform: none;
-            margin-top: 2px;
-        }
+        .terminal-panel { background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px; margin-top: 10px; }
+        .terminal-line { display: flex; flex-direction: column; font-size: 11px; color: rgba(255,255,255,0.4); }
+        #live-vector-display { font-family: monospace; font-size: 12px; color: var(--accent-color); font-weight: bold; margin-top: 4px; }
+        #blend-display-debug { font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.4); }
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <script src="https://unpkg.com/@tonejs/midi"></script>
@@ -210,33 +79,48 @@
 <body>
 
     <canvas id="art-surface"></canvas>
-    <div id="glow-pointer"></div>
 
     <div id="art-hud">
         <h1>Generative Music Album</h1>
-        <div id="status-text">Connecting Local Matrices...</div>
+        <div id="status-text">Gravity Engine Booting...</div>
     </div>
 
     <button id="drawer-toggle">⚙︎</button>
 
     <div id="tech-drawer">
-        <div class="drawer-header">Diagnostic Parameters</div>
+        <div class="drawer-header">Orbital Diagnostics</div>
 
         <button id="main-art-toggle">Initialize Space</button>
+        
+        <button id="lock-toggle-btn">🔒 System Automation: LOCKED</button>
 
         <div class="control-group">
-            <label>Audition Original Layers</label>
-            <div class="deck">
-                <button id="midi1-btn">Track 1</button>
-                <button id="midi2-btn">Track 2</button>
-                <button id="midi3-btn">Track 3</button>
+            <label>Manual Track Crossfade Weight Balance</label>
+            <div id="blend-display-debug">W1: 33% | W2: 33% | W3: 33%</div>
+            
+            <div id="manual-weight-sliders" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
+                <div class="slider-wrap">
+                    <span style="font-size:10px; min-width:40px; color:#00d2ff;">MIDI 1</span>
+                    <input type="range" id="w1-slider" min="0" max="100" value="33" disabled>
+                    <span class="val-disp" id="w1-val">33%</span>
+                </div>
+                <div class="slider-wrap">
+                    <span style="font-size:10px; min-width:40px; color:#a120ff;">MIDI 2</span>
+                    <input type="range" id="w2-slider" min="0" max="100" value="33" disabled>
+                    <span class="val-disp" id="w2-val">33%</span>
+                </div>
+                <div class="slider-wrap">
+                    <span style="font-size:10px; min-width:40px; color:#ff8620;">MIDI 3</span>
+                    <input type="range" id="w3-slider" min="0" max="100" value="34" disabled>
+                    <span class="val-disp" id="w3-val">34%</span>
+                </div>
             </div>
         </div>
 
         <div class="control-group">
-            <label>Master Tempo Control (BPM)</label>
+            <label>Master Tempo Engine (BPM)</label>
             <div class="slider-wrap">
-                <input type="range" id="tempo-slider" min="20" max="200" value="120">
+                <input type="range" id="tempo-slider" min="20" max="180" value="120" disabled>
                 <span class="val-disp" id="tempo-val">120</span>
             </div>
         </div>
@@ -250,28 +134,28 @@
         </div>
 
         <div class="control-group">
-            <label>Barycentric Distribution Vector Coordinates</label>
-            <div id="blend-display-debug" style="font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.4);">W1:33% | W2:33% | W3:33%</div>
-            <canvas id="blend-triangle" width="280" height="120" style="display:none;"></canvas>
-            <div id="triangle-dot" style="display:none;"></div>
+            <label>Audition Original Layers</label>
+            <div class="deck">
+                <button id="midi1-btn">Track 1</button>
+                <button id="midi2-btn">Track 2</button>
+                <button id="midi3-btn">Track 3</button>
+            </div>
         </div>
 
-        <div class="control-group" style="margin-top: 35px;">
+        <div class="control-group">
             <label>Active Engine Vector Monitor</label>
             <div class="terminal-panel">
                 <div class="terminal-line">
                     <span>Target State Matrix Readout:</span>
-                    <div id="live-vector-display">Engine Standby // Suspended</div>
+                    <div id="live-vector-display">Engine Standby</div>
                 </div>
             </div>
         </div>
     </div>
 
     <script>
-        // Drawer toggle mechanic helper layout script
         const drawer = document.getElementById('tech-drawer');
-        const toggleBtn = document.getElementById('drawer-toggle');
-        toggleBtn.addEventListener('click', () => drawer.classList.toggle('open'));
+        document.getElementById('drawer-toggle').addEventListener('click', () => drawer.classList.toggle('open'));
     </script>
     <script src="app.js"></script>
 </body>
