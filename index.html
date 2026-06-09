@@ -103,6 +103,7 @@
     </style>
     <script src="https://cdnjs.cloudflare.com/ajax/libs/tone/14.8.49/Tone.js"></script>
     <script src="https://unpkg.com/@tonejs/midi"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/suncalc/1.8.0/suncalc.min.js"></script>
 </head>
 <body>
 
@@ -144,6 +145,21 @@
             </div>
         </div>
         
+        <div class="control-group">
+            <label>Celestial Override (Test Mode)</label>
+            <div style="display:grid; gap:10px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px;">
+                <label>Moon Phase (0-1): <input type="range" id="test-phase" min="0" max="1" step="0.01" value="0.5"></label>
+                <label>Moon Dist (km): <input type="range" id="test-dist" min="363000" max="405000" step="1000" value="384000"></label>
+                <label>Month (1-12): <input type="range" id="test-month" min="1" max="12" step="1" value="6"></label>
+            </div>
+        </div>
+
+        <div class="control-group">
+            <label>System Monitor</label>
+            <div id="celestial-monitor" style="font-size: 11px; color: #888; font-family: monospace;">
+                Distortion: <span id="mon-dist">0</span> | Filter: <span id="mon-freq">0</span>Hz | BPM: <span id="mon-bpm">0</span>
+            </div>
+        </div>
 
         <div class="control-group">
             <label>Master Tempo Engine (BPM)</label>

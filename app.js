@@ -4,7 +4,7 @@
    ========================================================================= */
 
 // Audio engine components for standard Web Audio processing
-let polyChordSynth, expressiveMelodySynth, delay, reverb, timbreFilter, masterLimiter;
+let polyChordSynth, expressiveMelodySynth, delay, reverb, timbreFilter, masterLimiter, distortion;
 
 // Generative playback control flags
 let isPlayingGenerative = false;
@@ -233,9 +233,77 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
     }
 }
 
+/* =========================================================================
+   # 6. CELESTIAL ENGINE
+   # Gets real-time lunar data from SunCalc and maps it to global audio parameters
+   ========================================================================= */
+
+// Helper function to map values (e.g., distance 363k-405k -> BPM 100-25)
+function mapValue(value, inMin, inMax, outMin, outMax) {
+    // Clamping the value to ensure it stays within our logical bounds
+    const clamped = Math.min(Math.max(value, inMin), inMax);
+    return (clamped - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
+}
+
+function updateCelestialParameters(isManual = false) {
+    let phase, distance, month;
+
+    if (isManual) {
+        // Read values from the new UI sliders
+        phase = parseFloat(document.getElementById('test-phase').value);
+        distance = parseFloat(document.getElementById('test-dist').value);
+        month = parseInt(document.getElementById('test-month').value);
+        
+        // Trigger key change based on month (1-12 maps to 0-11)
+        // You would call your existing boot() or key-change logic here
+    } else {
+        // Existing auto-logic
+        const moonIllum = SunCalc.getMoonIllumination(new Date());
+        phase = moonIllum.phase;
+        distance = SunCalc.getMoonPosition(new Date(), 0, 0).distance * 6371;
+    }
+
+    // Apply mappings
+    const bpm = mapValue(distance, 405000, 363000, 25, 100);
+    const freq = mapValue(phase, 0, 0.5, 1200, 4000);
+    const dist = mapValue(phase, 0, 0.5, 0, 0.5);
+
+    // Force the manual slider and monitor to match the celestial BPM ---
+    const tempoSlider = document.getElementById('tempo-slider');
+    if (tempoSlider) {
+        tempoSlider.value = Math.round(bpm);
+    }
+    document.getElementById('mon-bpm').innerText = Math.round(bpm);
+
+    // Apply to Audio
+    Tone.Transport.bpm.rampTo(bpm, 0.5);
+    if (timbreFilter) timbreFilter.frequency.rampTo(freq, 0.5);
+    if (typeof distortion !== 'undefined') distortion.distortion = dist;
+
+    // Update Monitor
+    document.getElementById('mon-dist').innerText = dist.toFixed(2);
+    document.getElementById('mon-freq').innerText = Math.round(freq);
+    document.getElementById('mon-bpm').innerText = Math.round(bpm);
+}
+
+async function changeKeyByMonth(month) {
+    // 1-12 maps to root notes 0-11
+    const newRoot = (month - 1) % 12; 
+    
+    // Clear existing brains
+    statusText.innerText = "Transposing...";
+    
+    // Re-run the analysis with the new target root
+    await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1, newRoot, (newRoot + 9) % 12, 'k1');
+    await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2, newRoot, (newRoot + 9) % 12, 'k2');
+    await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3, newRoot, (newRoot + 9) % 12, 'k3');
+    
+    statusText.innerText = "Key Updated: " + newRoot;
+}
+
 
 /* =========================================================================
-   # 6. Audio Pipeline Configuration (Calibrated Celesta)
+   # 7. Audio Pipeline Configuration (Calibrated Celesta)
    # Restores the pure music box/celesta glass-timbre sound engine while protecting against clipping distortion.
    ========================================================================= */
 function setupAudioEngine() {
@@ -248,6 +316,7 @@ function setupAudioEngine() {
     reverb = new Tone.Reverb({ decay: 7.5, wet: 0.55 }).connect(masterLimiter);
     delay = new Tone.FeedbackDelay({ delayTime: "4n.", feedback: 0.35, wet: 0.25 }).connect(reverb);
     timbreFilter = new Tone.Filter({ type: "lowpass", frequency: 1200, Q: 1 }).connect(delay);
+    distortion = new Tone.Distortion(0.01).connect(timbreFilter);
 
     // CHORD ENGINE: Pure Music Box sine tone (Lower baseline gain for stacking headroom)
     polyChordSynth = new Tone.PolySynth(Tone.Synth, {
@@ -258,12 +327,12 @@ function setupAudioEngine() {
     // MELODY ENGINE: Instant attack hammer transient strike sine tone
     expressiveMelodySynth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sine" }, envelope: { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.3 }
-    }).connect(timbreFilter);
+    }).connect(distortion);
     expressiveMelodySynth.volume.value = -10;
 }
 
 /* =========================================================================
-   # 7. Generative Music Logic (Probabilistic Interpolation)
+   # 8. Generative Music Logic (Probabilistic Interpolation)
    # Defines how the engine navigates Markov chains to select the "next note".
    ========================================================================= */
 
@@ -351,7 +420,7 @@ function triggerMelodyGeneration(time) {
 
 
 /* =========================================================================
-   # 8. Audition Playback Engine & Standard Schedulers
+   # 9. Audition Playback Engine & Standard Schedulers
    # Logic to play back standard, non-generative, isolated MIDI tracks.
    ========================================================================= */
 
@@ -394,7 +463,7 @@ function clearAllPlaybacks() {
 
 
 /* =========================================================================
-   # 9. User Interaction & Control Handlers
+   # 10. User Interaction & Control Handlers
    # Connects HTML buttons and sliders to JavaScript execution logic.
    ========================================================================= */
 
@@ -500,7 +569,7 @@ if (w2Slider) w2Slider.addEventListener('input', handleManualWeightMixUpdate);
 if (w3Slider) w3Slider.addEventListener('input', handleManualWeightMixUpdate);
 
 /* =========================================================================
-   # 10. HORIZONTAL CYLINDER RENDERING MODULES
+   # 11. HORIZONTAL CYLINDER RENDERING MODULES
    # Complete Canvas physics engine and 3D isometric visualization logic.
    ========================================================================= */
 
@@ -704,7 +773,7 @@ requestAnimationFrame(advanceCelestialPhysics);
 
 
 /* =========================================================================
-   # 11. System Boot & Key Selector
+   # 12. System Boot & Key Selector
    ========================================================================= */
 
 // The key selector listener — value is "majorRootIndex:minorRootIndex"
@@ -726,14 +795,43 @@ async function boot(targetMajorRoot = 0, targetMinorRoot = 9) {
     statusText.innerText = "Calibrating Harmonic Engine...";
     statusText.style.color = "";
     try {
+        // 1. Setup the audio nodes first
+        setupAudioEngine(); 
+
+        // 2. Perform analysis
         await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1, targetMajorRoot, targetMinorRoot, 'k1');
         await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2, targetMajorRoot, targetMinorRoot, 'k2');
         await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3, targetMajorRoot, targetMinorRoot, 'k3');
-        statusText.innerText = "Engine is Ready"; statusText.style.color = "#34c759";
+        
+        // 3. Sync with the stars
+        updateCelestialParameters();
+        
+        statusText.innerText = "Engine is Ready"; 
+        statusText.style.color = "#34c759";
     } catch(e) {
-        statusText.innerText = "ERROR: " + e.message; statusText.style.color = "#ff3b30";
+        statusText.innerText = "ERROR: " + e.message; 
+        statusText.style.color = "#ff3b30";
         console.error(e);
     }
+}
+
+// Attach listeners to sliders
+['test-phase', 'test-dist', 'test-month'].forEach(id => {
+    document.getElementById(id).addEventListener('input', () => updateCelestialParameters(true));
+});
+
+// The new Month listener
+const monthSlider = document.getElementById('test-month');
+if (monthSlider) {
+    monthSlider.addEventListener('input', async (e) => {
+        const month = parseInt(e.target.value);
+        
+        // This stops the audio, re-analyzes the midi, and restarts
+        await changeKeyByMonth(month); 
+        
+        // Sync the celestial parameters after the key change
+        updateCelestialParameters(true);
+    });
 }
 
 // Default boot: C maj / A min
