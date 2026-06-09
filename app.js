@@ -37,7 +37,6 @@ let isSystemLocked = true;
 // Active Target Tracking Pointer ID: Defines which "cylinder" the automated firefly is currently navigating toward.
 let activeTargetMusicBoxId = 1;
 
-
 /* =========================================================================
    # 2. DOM Selectors & UI Data Mappings
    # Connects variables to specific elements in the index.html user interface.
@@ -286,7 +285,7 @@ function processAutomatedBarycentricInfluence() {
     w1Slider.value = Math.round(weights.w1 * 100); w1Val.innerText = w1Slider.value + "%";
     w2Slider.value = Math.round(weights.w2 * 100); w2Val.innerText = w2Slider.value + "%";
     w3Slider.value = Math.round(weights.w3 * 100); w3Val.innerText = w3Slider.value + "%";
-    if (debugText) debugText.innerText = `MIDI 1: ${w1Slider.value}% | MIDI 2: ${w2Slider.value}% | MIDI 3: ${w3Slider.value}%`;
+    if (debugText) debugText.innerText = `Song 1: ${w1Slider.value}% | Song 2: ${w2Slider.value}% | Song 3: ${w3Slider.value}%`;
 }
 
 // Probabilistic Brain Selector: Dynamically selects the active database (A, B, or C) based on current Barycentric Influence matrix.
@@ -484,6 +483,7 @@ if (tempoSlider) tempoSlider.addEventListener('input', (e) => {
     if (!isSystemLocked) { tempoVal.innerText = e.target.value; Tone.Transport.bpm.value = parseFloat(e.target.value); }
 });
 
+
 // Barycentric Influence Matrix Manual Mixer Handlers: Updated weight mix calculations
 function handleManualWeightMixUpdate() {
     if (isSystemLocked) return;
@@ -493,12 +493,11 @@ function handleManualWeightMixUpdate() {
     // Recalculate weights relative to the total sum of all three sliders
     weights.w1 = v1 / sum; weights.w2 = v2 / sum; weights.w3 = v3 / sum;
     w1Val.innerText = `${Math.round(weights.w1*100)}%`; w2Val.innerText = `${Math.round(weights.w2*100)}%`; w3Val.innerText = `${Math.round(weights.w3*100)}%`;
-    if (debugText) debugText.innerText = `MIDI 1: ${Math.round(weights.w1*100)}% | MIDI 2: ${Math.round(weights.w2*100)}% | MIDI 3: ${Math.round(weights.w3*100)}%`;
+    if (debugText) debugText.innerText = `Song 1: ${Math.round(weights.w1*100)}% | Song 2: ${Math.round(weights.w2*100)}% | Song 3: ${Math.round(weights.w3*100)}%`;
 }
 if (w1Slider) w1Slider.addEventListener('input', handleManualWeightMixUpdate);
 if (w2Slider) w2Slider.addEventListener('input', handleManualWeightMixUpdate);
 if (w3Slider) w3Slider.addEventListener('input', handleManualWeightMixUpdate);
-
 
 /* =========================================================================
    # 10. HORIZONTAL CYLINDER RENDERING MODULES
