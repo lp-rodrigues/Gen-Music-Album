@@ -134,9 +134,10 @@
             </div>
         </div>
 
+
         <div class="control-group">
-            <label>Machine Tuning (Key)</label>
-            <select id="key-selector" style="width: 100%; background: #111; color: white; padding: 8px; border: 1px solid #333;">
+            <label>Machine Tuning (Key Collection)</label>
+            <select id="key-selector" style="width:100%; background:#111; color:white; padding:8px; border:1px solid #333; border-radius:4px; font-size:11px; letter-spacing:1px;">
                 <option value="0:9">C maj / A min</option>
                 <option value="7:4">G maj / E min</option>
                 <option value="2:11">D maj / B min</option>
@@ -151,7 +152,6 @@
                 <option value="5:2">F maj / D min</option>
             </select>
         </div>
-
 
         <div class="control-group">
             <label>Audition Original Layers</label>
@@ -170,15 +170,15 @@
                     <div id="status-text">Booting Matrix...</div>
                 </div>
                 <div class="terminal-line">
-                    <span>Track Key Normalization:</span>
-                    <div id="key-monitor" style="font-size: 10px; color: #aaa; margin-top: 5px;">
-                        T1: <span id="k1">-</span><br>
-                        T2: <span id="k2">-</span><br>
-                        T3: <span id="k3">-</span>
+                    <span>Key Normalisation:</span>
+                    <div style="font-family:monospace; font-size:11px; margin-top:5px; display:flex; flex-direction:column; gap:3px;">
+                        <div><span style="color:#ff3b30; font-weight:600;">T1</span> <span id="k1" style="color:rgba(255,255,255,0.5);">—</span></div>
+                        <div><span style="color:#ffcc00; font-weight:600;">T2</span> <span id="k2" style="color:rgba(255,255,255,0.5);">—</span></div>
+                        <div><span style="color:#007aff; font-weight:600;">T3</span> <span id="k3" style="color:rgba(255,255,255,0.5);">—</span></div>
                     </div>
                 </div>
                 <div class="terminal-line">
-                    <span>Target State Matrix Readout:</span>
+                    <span>Current Chord State:</span>
                     <div id="live-vector-display">Engine Standby</div>
                 </div>
             </div>
