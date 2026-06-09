@@ -245,45 +245,53 @@ function mapValue(value, inMin, inMax, outMin, outMax) {
     return (clamped - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
+function getMoonPhaseName(phase) {
+    const phases = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", 
+                    "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
+    return phases[Math.floor((phase * 8) + 0.5) % 8];
+}
+
 function updateCelestialParameters(isManual = false) {
-    let phase, distance, month;
+    let phase, distance;
 
     if (isManual) {
-        // Read values from the new UI sliders
-        phase = parseFloat(document.getElementById('test-phase').value);
-        distance = parseFloat(document.getElementById('test-dist').value);
-        month = parseInt(document.getElementById('test-month').value);
-        
-        // Trigger key change based on month (1-12 maps to 0-11)
-        // You would call your existing boot() or key-change logic here
+        // Read from the unified slider and test-phase
+        distance = parseFloat(document.getElementById('tempo-slider').value);
+        phase = parseFloat(document.getElementById('test-phase')?.value || 0.5);
     } else {
-        // Existing auto-logic
-        const moonIllum = SunCalc.getMoonIllumination(new Date());
+        const now = new Date();
+        const moonIllum = SunCalc.getMoonIllumination(now);
         phase = moonIllum.phase;
-        distance = SunCalc.getMoonPosition(new Date(), 0, 0).distance * 6371;
+        distance = SunCalc.getMoonPosition(now, 0, 0).distance;
     }
 
-    // Apply mappings
+    // Map distance to BPM (363k-405k -> 100-25)
     const bpm = mapValue(distance, 405000, 363000, 25, 100);
-    const freq = mapValue(phase, 0, 0.5, 1200, 4000);
-    const dist = mapValue(phase, 0, 0.5, 0, 0.5);
 
-    // Force the manual slider and monitor to match the celestial BPM ---
-    const tempoSlider = document.getElementById('tempo-slider');
-    if (tempoSlider) {
-        tempoSlider.value = Math.round(bpm);
-    }
-    document.getElementById('mon-bpm').innerText = Math.round(bpm);
-
+    // Update the monitor label to show Earth Radii or calculate km properly:
+    const distanceInKm = Math.round(distance * 6371); 
+    document.getElementById('mon-bpm-label').innerText = 
+        `BPM: ${Math.round(bpm)} | Distance: ${distanceInKm.toLocaleString()}km`;
+    
     // Apply to Audio
     Tone.Transport.bpm.rampTo(bpm, 0.5);
-    if (timbreFilter) timbreFilter.frequency.rampTo(freq, 0.5);
-    if (typeof distortion !== 'undefined') distortion.distortion = dist;
 
-    // Update Monitor
-    document.getElementById('mon-dist').innerText = dist.toFixed(2);
+    // Update Unified UI
+    const tempoSlider = document.getElementById('tempo-slider');
+    if (!isManual && tempoSlider) tempoSlider.value = Math.round(bpm);
+    
+    document.getElementById('mon-bpm-label').innerText = 
+        `BPM: ${Math.round(bpm)} | Distance: ${Math.round(distance)}km`;
+
+    // Update Monitors
+    document.getElementById('mon-phase').innerText = getMoonPhaseName(phase);
+    
+    const freq = mapValue(phase, 0, 1, 500, 4000);
+    if (timbreFilter) timbreFilter.frequency.rampTo(freq, 0.5);
+    if (typeof distortion !== 'undefined') distortion.distortion = phase * 0.5;
+    
+    document.getElementById('mon-dist').innerText = (phase * 0.5).toFixed(2);
     document.getElementById('mon-freq').innerText = Math.round(freq);
-    document.getElementById('mon-bpm').innerText = Math.round(bpm);
 }
 
 async function changeKeyByMonth(month) {
@@ -726,12 +734,6 @@ function advanceCelestialPhysics() {
         moon.x += moon.vx; moon.y += moon.vy;
     }
 
-    // Dynamic Tempo Synchronization Logic based on averaged visually orbiting distance factor parameters data points.
-    if (activeMusicBoxesCount > 0 && isSystemLocked) {
-        let bpm = Math.max(20, Math.min(180, Math.round(180 - ((distSum/activeMusicBoxesCount)/moon.attractionRadius)*160)));
-        tempoSlider.value = bpm; tempoVal.innerText = bpm;
-        if (isPlayingGenerative) Tone.Transport.bpm.value = bpm;
-    }
 
     // --- RENDER DYNAMIC LIQUID LIGHT FIELD FIREFLY CORE ---
     // (High-Intensity illumination source)
@@ -779,15 +781,18 @@ requestAnimationFrame(advanceCelestialPhysics);
 // The key selector listener — value is "majorRootIndex:minorRootIndex"
 const keySelector = document.getElementById('key-selector');
 if (keySelector) {
-    keySelector.addEventListener('change', (e) => {
-        // Reset brains and audition containers, then re-analyse with new target key
+    keySelector.addEventListener('change', async (e) => {
+        const [values, monthName] = e.target.value.split('|');
+        const [maj, min] = values.split(':').map(Number);
+        
+        // Reset brains
         harmonyBrainA = { states: [], transitionMatrix: {} }; harmonyBrainB = { states: [], transitionMatrix: {} }; harmonyBrainC = { states: [], transitionMatrix: {} };
         melodyBrainA  = { states: [], transitionMatrix: {} }; melodyBrainB  = { states: [], transitionMatrix: {} }; melodyBrainC  = { states: [], transitionMatrix: {} };
         originalSequenceData1 = []; originalSequenceData2 = []; originalSequenceData3 = [];
-        ['k1','k2','k3'].forEach(id => { const el = document.getElementById(id); if (el) el.innerText = '—'; });
+        
         clearAllPlaybacks();
-        const [maj, min] = e.target.value.split(':').map(Number);
-        boot(maj, min);
+        await boot(maj, min);
+        statusText.innerText = `Key Set: ${monthName}`;
     });
 }
 
@@ -815,24 +820,18 @@ async function boot(targetMajorRoot = 0, targetMinorRoot = 9) {
     }
 }
 
-// Attach listeners to sliders
-['test-phase', 'test-dist', 'test-month'].forEach(id => {
-    document.getElementById(id).addEventListener('input', () => updateCelestialParameters(true));
+// Add listener for the new unified tempo slider
+document.getElementById('tempo-slider').addEventListener('input', (e) => {
+    const val = parseFloat(e.target.value);
+    Tone.Transport.bpm.rampTo(val, 0.1);
+    document.getElementById('mon-bpm-label').innerText = `BPM: ${Math.round(val)} | Manual Mode`;
 });
 
-// The new Month listener
-const monthSlider = document.getElementById('test-month');
-if (monthSlider) {
-    monthSlider.addEventListener('input', async (e) => {
-        const month = parseInt(e.target.value);
-        
-        // This stops the audio, re-analyzes the midi, and restarts
-        await changeKeyByMonth(month); 
-        
-        // Sync the celestial parameters after the key change
-        updateCelestialParameters(true);
-    });
-}
+// Add listener for the new manual phase slider
+document.getElementById('test-phase').addEventListener('input', (e) => {
+    // We pass 'true' to indicate we are using manual override mode
+    updateCelestialParameters(true);
+});
 
 // Default boot: C maj / A min
 boot(0, 9);

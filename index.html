@@ -40,7 +40,7 @@
             background: var(--panel-bg); backdrop-filter: blur(30px); -webkit-backdrop-filter: blur(30px);
             border-left: 1px solid rgba(255, 255, 255, 0.1); z-index: 9;
             box-sizing: border-box; 
-            padding: 85px 40px 40px 40px; /* Increased top padding to clear the layout toggle button */
+            padding: 85px 40px 40px 40px;
             transition: right 0.4s cubic-bezier(0.16, 1, 0.3, 1); overflow-y: auto;
         }
         #tech-drawer.open { right: 0; }
@@ -65,17 +65,7 @@
         .val-disp { font-family: monospace; font-size: 12px; color: rgba(255,255,255,0.4); min-width: 30px; text-align: right; }
         
         .deck { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
-        
-        /* Base styles */
-        .deck button { 
-            background: rgba(255,255,255,0.05); 
-            border: 1px solid rgba(255,255,255,0.1); 
-            color: white; 
-            padding: 10px; 
-            font-size: 11px; 
-            border-radius: 6px; 
-            cursor: pointer; 
-        }
+        .deck button { background: rgba(255,255,255,0.05); border: 1px solid rgba(255,255,255,0.1); color: white; padding: 10px; font-size: 11px; border-radius: 6px; cursor: pointer; }
 
         /* Individual Border Colors */
         #midi1-btn { border-color: #ff3b30; }
@@ -89,13 +79,14 @@
 
         .deck button.active { background: var(--accent-color); border-color: var(--accent-color); }
 
+        
         .terminal-panel { background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 14px; margin-top: 10px; }
         .terminal-line { display: flex; flex-direction: column; font-size: 11px; color: rgba(255,255,255,0.4); margin-bottom: 8px; }
         .terminal-line:last-child { margin-bottom: 0; }
         #status-text { font-family: monospace; font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: rgba(255,255,255,0.3); font-weight: bold; margin-top: 4px; }
         #live-vector-display { font-family: monospace; font-size: 12px; color: var(--accent-color); font-weight: bold; margin-top: 4px; }
         #blend-display-debug { font-family: monospace; font-size: 11px; color: rgba(255,255,255,0.4); }
-
+        
         /* Color mapping for the Song buttons */
         #midi1-btn.active { background-color: #ff3b30 !important; color: #fff !important; }
         #midi2-btn.active { background-color: #ffcc00 !important; color: #000 !important; }
@@ -109,10 +100,10 @@
 
     <canvas id="art-surface"></canvas>
 
-<div id="art-hud">
-    <h1 style="margin-bottom: 5px;">Neverending Lullaby</h1>
-    <p style="font-size: 14px; letter-spacing: 1.5px; opacity: 0.6; margin: 0; text-transform: uppercase;">By Luís Rodrigues</p>
-</div>
+    <div id="art-hud">
+        <h1 style="margin-bottom: 5px;">Neverending Lullaby</h1>
+        <p style="font-size: 14px; letter-spacing: 1.5px; opacity: 0.6; margin: 0; text-transform: uppercase;">By Luís Rodrigues</p>
+    </div>
 
     <button id="drawer-toggle">⚙︎</button>
 
@@ -125,7 +116,6 @@
         <div class="control-group">
             <label>Manual Track Crossfade Weight Balance</label>
             <div id="blend-display-debug">W1: 33% | W2: 33% | W3: 33%</div>
-            
             <div id="manual-weight-sliders" style="margin-top: 10px; display: flex; flex-direction: column; gap: 8px;">
                 <div class="slider-wrap">
                     <span style="font-size:10px; min-width:40px; color:#ff3b30; font-weight: 600;">Song 1</span>
@@ -146,26 +136,38 @@
         </div>
         
         <div class="control-group">
-            <label>Celestial Override (Test Mode)</label>
-            <div style="display:grid; gap:10px; padding:10px; background:rgba(255,255,255,0.05); border-radius:8px;">
-                <label>Moon Phase (0-1): <input type="range" id="test-phase" min="0" max="1" step="0.01" value="0.5"></label>
-                <label>Moon Dist (km): <input type="range" id="test-dist" min="363000" max="405000" step="1000" value="384000"></label>
-                <label>Month (1-12): <input type="range" id="test-month" min="1" max="12" step="1" value="6"></label>
-            </div>
+            <label>Tide & Tempo (Moon Distance/BPM)</label>
+            <input type="range" id="tempo-slider" min="25" max="100" value="60" style="width:100%">
+            <div id="mon-bpm-label" style="font-size: 11px; margin-top:5px; color:rgba(255,255,255,0.5);">BPM: 60 | Distance: 384,000km</div>
+        </div>
+
+        <div class="control-group">
+            <label>Machine Tuning (Month & Key)</label>
+            <select id="key-selector" style="width:100%; background:#111; color:white; padding:8px; border:1px solid #333; border-radius:4px; font-size:11px; letter-spacing:1px;">
+                <option value="0:9|January">January (C maj / A min)</option>
+                <option value="1:10|February">February (Db maj / Bb min)</option>
+                <option value="2:11|March">March (D maj / B min)</option>
+                <option value="3:0|April">April (Eb maj / C min)</option>
+                <option value="4:1|May">May (E maj / C# min)</option>
+                <option value="5:2|June">June (F maj / D min)</option>
+                <option value="6:3|July">July (F# maj / D# min)</option>
+                <option value="7:4|August">August (G maj / E min)</option>
+                <option value="8:5|September">September (Ab maj / F min)</option>
+                <option value="9:6|October">October (A maj / F# min)</option>
+                <option value="10:7|November">November (Bb maj / G min)</option>
+                <option value="11:8|December">December (B maj / G# min)</option>
+            </select>
+        </div>
+
+        <div class="control-group">
+            <label>Manual Moon Phase Override</label>
+            <input type="range" id="test-phase" min="0" max="1" step="0.01" value="0.5" style="width:100%">
         </div>
 
         <div class="control-group">
             <label>System Monitor</label>
             <div id="celestial-monitor" style="font-size: 11px; color: #888; font-family: monospace;">
-                Distortion: <span id="mon-dist">0</span> | Filter: <span id="mon-freq">0</span>Hz | BPM: <span id="mon-bpm">0</span>
-            </div>
-        </div>
-
-        <div class="control-group">
-            <label>Master Tempo Engine (BPM)</label>
-            <div class="slider-wrap">
-                <input type="range" id="tempo-slider" min="20" max="180" value="120" disabled>
-                <span class="val-disp" id="tempo-val">120</span>
+                Phase: <span id="mon-phase">New Moon</span> | Distortion: <span id="mon-dist">0</span> | Filter: <span id="mon-freq">0</span>Hz
             </div>
         </div>
 
@@ -177,34 +179,14 @@
             </div>
         </div>
 
-
-        <div class="control-group">
-            <label>Machine Tuning (Key Collection)</label>
-            <select id="key-selector" style="width:100%; background:#111; color:white; padding:8px; border:1px solid #333; border-radius:4px; font-size:11px; letter-spacing:1px;">
-                <option value="0:9">C maj / A min</option>
-                <option value="7:4">G maj / E min</option>
-                <option value="2:11">D maj / B min</option>
-                <option value="9:6">A maj / F# min</option>
-                <option value="4:1">E maj / C# min</option>
-                <option value="11:8">B maj / G# min</option>
-                <option value="6:3">F# maj / D# min</option>
-                <option value="1:10">Db maj / Bb min</option>
-                <option value="8:5">Ab maj / F min</option>
-                <option value="3:0">Eb maj / C min</option>
-                <option value="10:7">Bb maj / G min</option>
-                <option value="5:2">F maj / D min</option>
-            </select>
-        </div>
-
         <div class="control-group">
             <label>Audition Original Layers</label>
             <div class="deck">
-                <button id="midi1-btn" class="song-btn" data-color="#ff3b30">Song 1</button>
-                <button id="midi2-btn" class="song-btn" data-color="#ffcc00">Song 2</button>
-                <button id="midi3-btn" class="song-btn" data-color="#007aff">Song 3</button>
+                <button id="midi1-btn" class="song-btn">Song 1</button>
+                <button id="midi2-btn" class="song-btn">Song 2</button>
+                <button id="midi3-btn" class="song-btn">Song 3</button>
             </div>
         </div>
-
         <div class="control-group">
             <label>Active Engine Vector Monitor</label>
             <div class="terminal-panel">
@@ -215,9 +197,9 @@
                 <div class="terminal-line">
                     <span>Key Normalisation:</span>
                     <div style="font-family:monospace; font-size:11px; margin-top:5px; display:flex; flex-direction:column; gap:3px;">
-                        <div><span style="color:#ff3b30; font-weight:600;">Song 1</span> <span id="k1" style="color:rgba(255,255,255,0.5);">—</span></div>
-                        <div><span style="color:#ffcc00; font-weight:600;">Song 2</span> <span id="k2" style="color:rgba(255,255,255,0.5);">—</span></div>
-                        <div><span style="color:#007aff; font-weight:600;">Song 3</span> <span id="k3" style="color:rgba(255,255,255,0.5);">—</span></div>
+                        <div><span style="color:#ff3b30; font-weight:600;">T1</span> <span id="k1" style="color:rgba(255,255,255,0.5);">—</span></div>
+                        <div><span style="color:#ffcc00; font-weight:600;">T2</span> <span id="k2" style="color:rgba(255,255,255,0.5);">—</span></div>
+                        <div><span style="color:#007aff; font-weight:600;">T3</span> <span id="k3" style="color:rgba(255,255,255,0.5);">—</span></div>
                     </div>
                 </div>
                 <div class="terminal-line">
