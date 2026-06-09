@@ -37,6 +37,16 @@ let isSystemLocked = true;
 // Active Target Tracking Pointer ID: Defines which "cylinder" the automated firefly is currently navigating toward.
 let activeTargetMusicBoxId = 1;
 
+// Celestial Parameter Ranges: Defined bounds for mapping lunar data to musical parameters (e.g., distance to BPM)
+const DIST_MIN = 363000;
+const DIST_MAX = 406000;
+const BPM_MIN = 25;
+const BPM_MAX = 100;
+
+let currentBpm = 60;
+let currentPhase = 0;
+
+
 /* =========================================================================
    # 2. DOM Selectors & UI Data Mappings
    # Connects variables to specific elements in the index.html user interface.
@@ -246,57 +256,82 @@ function mapValue(value, inMin, inMax, outMin, outMax) {
 }
 
 function getMoonPhaseName(phase) {
-    const phases = ["New Moon", "Waxing Crescent", "First Quarter", "Waxing Gibbous", 
-                    "Full Moon", "Waning Gibbous", "Last Quarter", "Waning Crescent"];
-    return phases[Math.floor((phase * 8) + 0.5) % 8];
+    // We map the 0-1 cycle to more precise labels
+    if (phase < 0.05 || phase > 0.95) return "New Moon";
+    if (phase < 0.20) return "Waxing Crescent";
+    if (phase < 0.30) return "First Quarter";
+    if (phase < 0.45) return "Waxing Gibbous";
+    if (phase < 0.55) return "Full Moon";
+    if (phase < 0.70) return "Waning Gibbous";
+    if (phase < 0.80) return "Last Quarter";
+    return "Waning Crescent"; // 0.80 to 0.95
 }
 
 function updateCelestialParameters(isManual = false) {
-    let phase, distance;
-
+    let distance, distortionAmount;
+    
+    // Add to updateCelestialParameters
+    const debugMoon = SunCalc.getMoonIllumination(new Date());
+    console.log(`DEBUG: Phase Value: ${debugMoon.phase.toFixed(2)}, Illumination: ${(debugMoon.fraction * 100).toFixed(0)}%`);
+    
     if (isManual) {
-        // Read from the unified slider and test-phase
-        distance = parseFloat(document.getElementById('tempo-slider').value);
-        phase = parseFloat(document.getElementById('test-phase')?.value || 0.5);
+        currentBpm = parseFloat(document.getElementById('tempo-slider').value);
+        currentPhase = parseFloat(document.getElementById('test-phase').value);
+        
+        // Calculate distance only for display purposes (no audio dependency)
+        distance = mapValue(currentBpm, BPM_MIN, BPM_MAX, DIST_MAX, DIST_MIN);
     } else {
         const now = new Date();
         const moonIllum = SunCalc.getMoonIllumination(now);
-        phase = moonIllum.phase;
+        currentPhase = moonIllum.phase;
         distance = SunCalc.getMoonPosition(now, 0, 0).distance;
+        
+        currentBpm = mapValue(distance, DIST_MIN, DIST_MAX, BPM_MAX, BPM_MIN);
+        
+        
+        console.log(`DEBUG: Distance: ${distance.toFixed(0)} km, Clamped BPM: ${currentBpm.toFixed(2)}`);
     }
 
-    // Map distance to BPM (363k-405k -> 100-25)
-    const bpm = mapValue(distance, 405000, 363000, 25, 100);
+    // Triangular mapping (Peak at 0.5, Min at 0.0 and 1.0)
+    const peakAtFullMoon = 1 - (Math.abs(currentPhase - 0.5) * 2); 
 
-    // Update the monitor label to show Earth Radii or calculate km properly:
-    const distanceInKm = Math.round(distance * 6371); 
-    document.getElementById('mon-bpm-label').innerText = 
-        `BPM: ${Math.round(bpm)} | Distance: ${distanceInKm.toLocaleString()}km`;
-    
-    // Apply to Audio
-    Tone.Transport.bpm.rampTo(bpm, 0.5);
+    // Map the 0 to 1 range (where 1 is Full Moon) to your desired ranges
+    const freq = mapValue(peakAtFullMoon, 0, 1, 400, 4000);
+    distortionAmount = mapValue(peakAtFullMoon, 0, 1, 0, 0.5);
 
-    // Update Unified UI
-    const tempoSlider = document.getElementById('tempo-slider');
-    if (!isManual && tempoSlider) tempoSlider.value = Math.round(bpm);
-    
-    document.getElementById('mon-bpm-label').innerText = 
-        `BPM: ${Math.round(bpm)} | Distance: ${Math.round(distance)}km`;
+    // SAFETY GUARD:
+    // If bpm is not a valid number (NaN/null), stop immediately.
+    if (typeof currentBpm !== 'number' || isNaN(currentBpm)) {
+        console.warn("Skipping audio update: Invalid BPM calculated.");
+        return; 
+    }
 
-    // Update Monitors
-    document.getElementById('mon-phase').innerText = getMoonPhaseName(phase);
-    
-    const freq = mapValue(phase, 0, 1, 500, 4000);
+    // Apply to Audio Engine
+    Tone.Transport.bpm.rampTo(currentBpm, 0.1);
     if (timbreFilter) timbreFilter.frequency.rampTo(freq, 0.5);
-    if (typeof distortion !== 'undefined') distortion.distortion = phase * 0.5;
-    
-    document.getElementById('mon-dist').innerText = (phase * 0.5).toFixed(2);
+    if (typeof distortion !== 'undefined') distortion.distortion = distortionAmount;
+
+    // --- UI UPDATES (Source of truth: the local variables calculated above) ---
+    document.getElementById('mon-phase').innerText = getMoonPhaseName(currentPhase);
+    document.getElementById('mon-dist').innerText = Math.round(distance).toLocaleString() + " km";
     document.getElementById('mon-freq').innerText = Math.round(freq);
+    document.getElementById('mon-distort').innerText = distortionAmount.toFixed(2);
+    
+    document.getElementById('mon-bpm-label').innerText = 
+        `BPM: ${Math.round(currentBpm)} | Distance: ${Math.round(distance).toLocaleString()}km | ${isManual ? 'Manual' : 'Auto'}`;
+}
+
+// Helper function to determine the root note index for a given month (0-11) based on your specified mapping
+function getRootNoteForMonth(monthIndex) {
+    // monthIndex is 0-11
+    // Your map: 0->9, 1->10, 2->11, 3->0, 4->1, 5->2 (June), etc.
+    const map = [9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8];
+    return map[monthIndex];
 }
 
 async function changeKeyByMonth(month) {
-    // 1-12 maps to root notes 0-11
-    const newRoot = (month - 1) % 12; 
+    // Use the helper function!
+    const newRoot = getRootNoteForMonth(monthIndex);
     
     // Clear existing brains
     statusText.innerText = "Transposing...";
@@ -544,20 +579,64 @@ if (midi3Btn) midi3Btn.addEventListener('click', async () => {
 // *** AUTOMATION CONTROL: System Locked vs Manual Slider Override Toggle ***
 if (lockBtn) lockBtn.addEventListener('click', () => {
     isSystemLocked = !isSystemLocked;
+    
+    // Select all manual inputs
+    const tempoSlider = document.getElementById('tempo-slider');
+    const phaseSlider = document.getElementById('test-phase');
+    const w1 = document.getElementById('w1-slider');
+    const w2 = document.getElementById('w2-slider');
+    const w3 = document.getElementById('w3-slider');
+
     if (isSystemLocked) {
-        lockBtn.innerText = "🔒 System Automation: LOCKED"; lockBtn.classList.remove('unlocked');
-        // Disable Manual Input Fields
-        tempoSlider.disabled = true; w1Slider.disabled = true; w2Slider.disabled = true; w3Slider.disabled = true;
+        lockBtn.innerText = "🔒 System Automation: LOCKED"; 
+        lockBtn.classList.remove('unlocked');
+        
+        // 1. Force the Auto Refresh (This calculates the correct BPM/Phase)
+        updateCelestialParameters(false);
+        
+        // 2. DISABLE UI BEFORE SYNCING
+        // By disabling first, you prevent 'input' events from firing 
+        // while the code updates the values.
+        tempoSlider.disabled = true; 
+        phaseSlider.disabled = true; 
+        w1.disabled = true; w2.disabled = true; w3.disabled = true;
+
+        // 3. Update sliders based on the variables already set by updateCelestialParameters
+        // Access your global variables (bpm, phase) directly
+        tempoSlider.value = Math.round(currentBpm); 
+        phaseSlider.value = currentPhase.toFixed(2);
+
+        // 4. Reset Music Box Layout
+        initCelestialLayout();
+
     } else {
-        lockBtn.innerText = "🔓 Manual Override: UNLOCKED"; lockBtn.classList.add('unlocked');
-        // Enable Manual Input Fields
-        tempoSlider.disabled = false; w1Slider.disabled = false; w2Slider.disabled = false; w3Slider.disabled = false;
+        lockBtn.innerText = "🔓 Manual Override: UNLOCKED"; 
+        lockBtn.classList.add('unlocked');
+        
+        // Unlock EVERYTHING
+        tempoSlider.disabled = false; 
+        phaseSlider.disabled = false; // Moon Phase Unlocked
+        w1.disabled = false; w2.disabled = false; w3.disabled = false;
+        
+        // Sync UI to current state
+        updateCelestialParameters(false);
     }
 });
 
+
 // Tempo Potentiometer Slider Listener
 if (tempoSlider) tempoSlider.addEventListener('input', (e) => {
-    if (!isSystemLocked) { tempoVal.innerText = e.target.value; Tone.Transport.bpm.value = parseFloat(e.target.value); }
+    if (!isSystemLocked) { 
+        updateCelestialParameters(true); 
+    }
+});
+
+// Phase Slider Listener
+const phaseSlider = document.getElementById('test-phase');
+if (phaseSlider) phaseSlider.addEventListener('input', (e) => {
+    if (!isSystemLocked) { 
+        updateCelestialParameters(true); 
+    }
 });
 
 
@@ -601,9 +680,20 @@ let draggedMusicBox = null;
 // Layout Initialization: Sets initial visual barycentric balance point locations based on standard geometry principles.
 function initCelestialLayout() {
     canvas.width = window.innerWidth; canvas.height = window.innerHeight;
+    
+    // Snap music boxes back to their default formation
     musicBoxes[0].x = canvas.width / 2; musicBoxes[0].y = canvas.height * 0.30;
     musicBoxes[1].x = canvas.width * 0.28; musicBoxes[1].y = canvas.height * 0.65;
     musicBoxes[2].x = canvas.width * 0.72; musicBoxes[2].y = canvas.height * 0.65;
+
+    // Reset Weights to equal balance if locked
+    if (isSystemLocked) {
+        weights = { w1: 0.33, w2: 0.33, w3: 0.33 };
+        // Update the slider UI to match the reset weights
+        if (w1Slider) w1Slider.value = 1;
+        if (w2Slider) w2Slider.value = 1;
+        if (w3Slider) w3Slider.value = 1;
+    }
 }
 
 // True Isometric AXIS Coordinate Transformation Matrix: Converts flat X/Y data into oblique 3D space projection.
@@ -778,18 +868,22 @@ requestAnimationFrame(advanceCelestialPhysics);
    # 12. System Boot & Key Selector
    ========================================================================= */
 
-// The key selector listener — value is "majorRootIndex:minorRootIndex"
+// The key selector listener
 const keySelector = document.getElementById('key-selector');
 if (keySelector) {
     keySelector.addEventListener('change', async (e) => {
+        // --- ADDED SAFETY CHECK ---
+        if (isSystemLocked) {
+            statusText.innerText = "LOCKED: Disable automation to change key.";
+            // Optional: You could reset the selector to a previous value here
+            return; 
+        }
+
         const [values, monthName] = e.target.value.split('|');
         const [maj, min] = values.split(':').map(Number);
         
-        // Reset brains
-        harmonyBrainA = { states: [], transitionMatrix: {} }; harmonyBrainB = { states: [], transitionMatrix: {} }; harmonyBrainC = { states: [], transitionMatrix: {} };
-        melodyBrainA  = { states: [], transitionMatrix: {} }; melodyBrainB  = { states: [], transitionMatrix: {} }; melodyBrainC  = { states: [], transitionMatrix: {} };
-        originalSequenceData1 = []; originalSequenceData2 = []; originalSequenceData3 = [];
-        
+        // ... rest of your existing logic ...
+        harmonyBrainA = { states: [], transitionMatrix: {} }; // ... etc
         clearAllPlaybacks();
         await boot(maj, min);
         statusText.innerText = `Key Set: ${monthName}`;
@@ -820,18 +914,24 @@ async function boot(targetMajorRoot = 0, targetMinorRoot = 9) {
     }
 }
 
-// Add listener for the new unified tempo slider
+// LISTENER: TEMPO SLIDER 
 document.getElementById('tempo-slider').addEventListener('input', (e) => {
-    const val = parseFloat(e.target.value);
-    Tone.Transport.bpm.rampTo(val, 0.1);
-    document.getElementById('mon-bpm-label').innerText = `BPM: ${Math.round(val)} | Manual Mode`;
+    if (!isSystemLocked) {
+        // Trigger the central update function which handles BPM, Audio, and UI
+        updateCelestialParameters(true);
+    }
 });
 
-// Add listener for the new manual phase slider
+// LISTENER: PHASE SLIDER 
 document.getElementById('test-phase').addEventListener('input', (e) => {
-    // We pass 'true' to indicate we are using manual override mode
-    updateCelestialParameters(true);
+    // Only execute if System is UNLOCKED
+    if (!isSystemLocked) {
+        updateCelestialParameters(true);
+    }
 });
 
-// Default boot: C maj / A min
-boot(0, 9);
+const currentMonthIndex = new Date().getMonth(); // 5 for June
+const rootNote = getRootNoteForMonth(currentMonthIndex); // Returns 2
+
+// Pass the rootNote and its relative minor (root + 9)
+boot(rootNote, (rootNote + 9) % 12);
