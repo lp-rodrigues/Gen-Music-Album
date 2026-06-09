@@ -241,10 +241,10 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
 function setupAudioEngine() {
     if (polyChordSynth) return;
 
-    // *** DISTORTION BRICKWALL: Prevent accumulating audio signal peaks from clipping ***
+    // MASTER LIMITER: Prevent accumulating audio signal peaks from clipping
     masterLimiter = new Tone.Limiter(0).toDestination();
 
-    // Standard stereo effects processed through the limiter
+    // FX CHAIN: Standard stereo effects processed through the limiter
     reverb = new Tone.Reverb({ decay: 7.5, wet: 0.55 }).connect(masterLimiter);
     delay = new Tone.FeedbackDelay({ delayTime: "4n.", feedback: 0.35, wet: 0.25 }).connect(reverb);
     timbreFilter = new Tone.Filter({ type: "lowpass", frequency: 1200, Q: 1 }).connect(delay);
@@ -261,7 +261,6 @@ function setupAudioEngine() {
     }).connect(timbreFilter);
     expressiveMelodySynth.volume.value = -10;
 }
-
 
 /* =========================================================================
    # 7. Generative Music Logic (Probabilistic Interpolation)
@@ -327,6 +326,7 @@ function triggerHarmonyGeneration(time) {
 // GENERATIVE TASK 2: Melody Scheduler
 function triggerMelodyGeneration(time) {
     if (!isPlayingGenerative) return;
+
     const wanderFactor = chaosSlider ? parseFloat(chaosSlider.value) : 0.15;
     const activeBrain = selectBrainFromTernary(melodyBrainA, melodyBrainB, melodyBrainC);
     if (!currentMelodyState) currentMelodyState = activeBrain.states[0] || { pitch: "C4", duration: "8n", velocity: 0.6, isPause: false };
