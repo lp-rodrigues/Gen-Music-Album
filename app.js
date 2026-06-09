@@ -37,6 +37,8 @@ let isSystemLocked = true;
 // Active Target Tracking Pointer ID: Defines which "cylinder" the automated firefly is currently navigating toward.
 let activeTargetMusicBoxId = 1;
 
+// Tracks the key offset to transpose the MIDI files.
+let currentKeyOffset = 0;
 
 /* =========================================================================
    # 2. DOM Selectors & UI Data Mappings
@@ -87,69 +89,178 @@ const getDurationTag = (dur) => {
 
 /* =========================================================================
    # 4. MIDI Feature Extraction & Feature Splitting Engine
-   # Parses raw MIDI file data into melodic (high) and harmonic (bass) Markov chains.
    ========================================================================= */
-async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceContainer) {
-    const midi = await Midi.fromUrl(url);
-    const activeTrack = midi.tracks.find(t => t.notes && t.notes.length > 0);
-    if (!activeTrack) throw new Error(`Missing note tracks inside ${url}`);
-    
-    // Process the active track to store the raw data for isolated audition playback
-    const rawNotes = activeTrack.notes;
-    rawNotes.forEach(n => sequenceContainer.push({ time: n.time, note: n.name, duration: n.duration, velocity: n.velocity }));
 
-    // Group notes into time-blocks to accurately identify chords/polyphony
-    const timeBlocks = {};
-    rawNotes.forEach(note => {
-        const roundedTime = Math.round(note.time * 8) / 8; 
-        if (!timeBlocks[roundedTime]) timeBlocks[roundedTime] = [];
-        timeBlocks[roundedTime].push(note);
-    });
+    /* -----------------------------------------------------------------------
+       KEY DETECTION ENGINE — Krumhansl-Schmuckler Correlation Method
+       Correlates the pitch-class duration histogram of a track against
+       24 established tonal profiles (12 major + 12 minor) and picks the
+       best match. Returns { root, index, quality } where quality is
+       "major" or "minor". This correctly handles relative keys:
+       C major and A minor share the same notes but have different profiles.
+    ----------------------------------------------------------------------- */
+    const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
 
-    const chordTimeKeys = Object.keys(timeBlocks).sort((a,b) => a - b);
-    let chordHistory = [];
+    // Krumhansl-Kessler tonal hierarchy weights
+    const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
+    const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
 
-    // --- FEATURE EXTRACTION: Harmony/Chords ---
-    // Extract polyphonic relationships (chords) below a specific MIDI pitch threshold (60)
-    for (let i = 0; i < chordTimeKeys.length; i++) {
-        const timeKey = parseFloat(chordTimeKeys[i]);
-        const notesInBlock = timeBlocks[timeKey];
-        const bassNotes = notesInBlock.filter(n => n.midi < 60).sort((a,b) => a.midi - b.midi);
-        if (bassNotes.length > 0) {
-            const chordString = bassNotes.map(n => n.name).join("-");
-            let duration = (i < chordTimeKeys.length - 1) ? parseFloat(chordTimeKeys[i+1]) - timeKey : bassNotes.reduce((max, n) => Math.max(max, n.duration), 1.0);
-            chordHistory.push({ notes: chordString, duration: getDurationTag(duration) });
+    function pearsonCorrelation(a, b) {
+        const n = a.length;
+        const meanA = a.reduce((s, v) => s + v, 0) / n;
+        const meanB = b.reduce((s, v) => s + v, 0) / n;
+        let num = 0, denomA = 0, denomB = 0;
+        for (let i = 0; i < n; i++) {
+            const da = a[i] - meanA, db = b[i] - meanB;
+            num += da * db; denomA += da * da; denomB += db * db;
+        }
+        return num / Math.sqrt(denomA * denomB);
+    }
+
+    function getMusicalKey(notes) {
+        // Build pitch-class histogram weighted by note duration (longer notes count more)
+        const histogram = new Array(12).fill(0);
+        notes.forEach(n => {
+            const pc = Tone.Midi(n.name).toMidi() % 12;
+            histogram[pc] += (n.duration || 0.5); // weight by duration
+        });
+
+        let bestScore = -Infinity, bestRoot = 0, bestQuality = "major";
+
+        for (let root = 0; root < 12; root++) {
+            // Rotate the histogram so 'root' aligns with C in the profile
+            const rotated = histogram.map((_, i) => histogram[(i + root) % 12]);
+
+            const majorScore = pearsonCorrelation(rotated, KS_MAJOR);
+            const minorScore = pearsonCorrelation(rotated, KS_MINOR);
+
+            if (majorScore > bestScore) { bestScore = majorScore; bestRoot = root; bestQuality = "major"; }
+            if (minorScore > bestScore) { bestScore = minorScore; bestRoot = root; bestQuality = "minor"; }
+        }
+
+        return { root: NOTE_NAMES[bestRoot], index: bestRoot, quality: bestQuality };
+    }
+
+    /* -----------------------------------------------------------------------
+       SEMITONE SHIFT CALCULATOR — Mode-Preserving, Collection-Aligned
+
+       Each "Machine Tuning" option represents a pitch-class COLLECTION,
+       encoded as two roots: { majorRoot, minorRoot } (e.g. C=0, A=9).
+
+       The shift logic preserves the detected mode:
+         - If detected key is MINOR  → align its root to targetMinorRoot
+         - If detected key is MAJOR  → align its root to targetMajorRoot
+
+       This means a track in C# minor stays minor — it just shifts to land
+       on A minor (when target collection is C maj / A min).
+
+       Examples with target C maj / A min (majorRoot=0, minorRoot=9):
+         - C# minor (1) → target minor root 9 → (9−1+12)%12 = 8 → −4 st ✓
+         - F  minor (5) → target minor root 9 → (9−5+12)%12 = 4 st      ✓
+         - C  minor (0) → target minor root 9 → (9−0+12)%12 = 9 → −3 st ✓
+         - C  major (0) → target major root 0 → 0 st                     ✓
+         - G  major (7) → target major root 0 → (0−7+12)%12 = 5 → −7? →
+                          shorter path: 5 st up                           ✓
+    ----------------------------------------------------------------------- */
+    function computeSemitoneShift(detected, targetMajorRoot, targetMinorRoot) {
+        const targetRoot = detected.quality === 'minor' ? targetMinorRoot : targetMajorRoot;
+        const rawShift = (targetRoot - detected.index + 12) % 12;
+        // Prefer the shorter path: if shift > 6, go the other direction
+        return rawShift > 6 ? rawShift - 12 : rawShift;
+    }
+
+    async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceContainer, targetMajorRoot, targetMinorRoot) {
+        const midi = await Midi.fromUrl(url);
+        const activeTrack = midi.tracks.find(t => t.notes && t.notes.length > 0);
+        if (!activeTrack) throw new Error(`Missing note tracks inside ${url}`);
+
+        // --- STEP 0: SNAPSHOT ORIGINALS before any mutation ---
+        // sequenceContainer is used by the audition buttons to play the
+        // original track unmodified. We capture name/midi/time/duration/velocity
+        // here, before the transposition loop touches the note objects.
+        activeTrack.notes.forEach(n => {
+            sequenceContainer.push({
+                time: n.time,
+                note: n.name,           // original pitch name
+                midi: Tone.Midi(n.name).toMidi(), // original MIDI number
+                duration: n.duration,
+                velocity: n.velocity
+            });
+        });
+        
+        // --- STEP 1: HARMONIC NORMALIZATION (K-S Key Detection + Mode-Preserving Transposition) ---
+        // Detection runs on originals (still unmodified at this point).
+        const detected = getMusicalKey(activeTrack.notes);
+        const shift = computeSemitoneShift(detected, targetMajorRoot, targetMinorRoot);
+
+        // Mutate note objects in place for Markov processing only.
+        // We store the PRE-SHIFT midi value as n.originalMidi so the harmony/melody
+        // threshold split always reflects the composer's original register intention,
+        // not the transposed pitch. A note that was a bass note stays a bass note
+        // regardless of how many semitones it moved.
+        activeTrack.notes.forEach(n => {
+            n.originalMidi = Tone.Midi(n.name).toMidi(); // capture before shift
+            const midiVal = n.originalMidi + shift;
+            n.name = Tone.Midi(midiVal).toNote();
+            n.midi = midiVal;
+        });
+
+        const detectedLabel = `${detected.root} ${detected.quality === 'minor' ? 'min' : 'maj'}`;
+        const targetRoot = detected.quality === 'minor' ? targetMinorRoot : targetMajorRoot;
+        const targetLabel = `${NOTE_NAMES[targetRoot]} ${detected.quality === 'minor' ? 'min' : 'maj'}`;
+        const shiftLabel = shift === 0 ? 'no shift' : shift > 0 ? `+${shift} st` : `${shift} st`;
+        harmonyBrain.metadata = {
+            key: `${detectedLabel} → ${targetLabel} (${shiftLabel})`
+        };
+
+        // --- STEP 2: BUILD MARKOV MATRICES from transposed notes ---
+        const rawNotes = activeTrack.notes;
+
+        const timeBlocks = {};
+        rawNotes.forEach(note => {
+            const roundedTime = Math.round(note.time * 8) / 8; 
+            if (!timeBlocks[roundedTime]) timeBlocks[roundedTime] = [];
+            timeBlocks[roundedTime].push(note);
+        });
+
+        const chordTimeKeys = Object.keys(timeBlocks).sort((a,b) => a - b);
+        let chordHistory = [];
+
+        for (let i = 0; i < chordTimeKeys.length; i++) {
+            const timeKey = parseFloat(chordTimeKeys[i]);
+            const notesInBlock = timeBlocks[timeKey];
+            const bassNotes = notesInBlock.filter(n => n.originalMidi < 60).sort((a,b) => a.originalMidi - b.originalMidi);
+            if (bassNotes.length > 0) {
+                const chordString = bassNotes.map(n => n.name).join("-");
+                let duration = (i < chordTimeKeys.length - 1) ? parseFloat(chordTimeKeys[i+1]) - timeKey : bassNotes.reduce((max, n) => Math.max(max, n.duration), 1.0);
+                chordHistory.push({ notes: chordString, duration: getDurationTag(duration) });
+            }
+        }
+        harmonyBrain.states = chordHistory;
+        for (let i = 0; i < chordHistory.length - 1; i++) {
+            const key = `${chordHistory[i].notes}_${chordHistory[i].duration}`;
+            if (!harmonyBrain.transitionMatrix[key]) harmonyBrain.transitionMatrix[key] = [];
+            harmonyBrain.transitionMatrix[key].push(chordHistory[i+1]);
+        }
+
+        const melodyNotes = rawNotes.filter(n => n.originalMidi >= 60);
+        let melodyHistory = [];
+        for (let i = 0; i < melodyNotes.length; i++) {
+            const current = melodyNotes[i];
+            melodyHistory.push({ pitch: current.name, duration: getDurationTag(current.duration), velocity: current.velocity, isPause: false });
+            if (i < melodyNotes.length - 1) {
+                const gap = melodyNotes[i + 1].time - (current.time + current.duration);
+                if (gap > 0.15) melodyHistory.push({ pitch: "REST", duration: getDurationTag(gap), velocity: 0, isPause: true });
+            }
+        }
+        melodyBrain.states = melodyHistory;
+        for (let i = 0; i < melodyHistory.length - 1; i++) {
+            const key = `${melodyHistory[i].pitch}_${melodyHistory[i].duration}`;
+            if (!melodyBrain.transitionMatrix[key]) melodyBrain.transitionMatrix[key] = [];
+            melodyBrain.transitionMatrix[key].push(melodyHistory[i+1]);
         }
     }
-    // Compile Chord Markov Brain States & Transitions
-    harmonyBrain.states = chordHistory;
-    for (let i = 0; i < chordHistory.length - 1; i++) {
-        const key = `${chordHistory[i].notes}_${chordHistory[i].duration}`;
-        if (!harmonyBrain.transitionMatrix[key]) harmonyBrain.transitionMatrix[key] = [];
-        harmonyBrain.transitionMatrix[key].push(chordHistory[i+1]);
-    }
 
-    // --- FEATURE EXTRACTION: Melody/Monophony ---
-    // Extract monophonic note data above the pitch threshold (60)
-    const melodyNotes = rawNotes.filter(n => n.midi >= 60);
-    let melodyHistory = [];
-    for (let i = 0; i < melodyNotes.length; i++) {
-        const current = melodyNotes[i];
-        melodyHistory.push({ pitch: current.name, duration: getDurationTag(current.duration), velocity: current.velocity, isPause: false });
-        // Account for rests and silence by explicitly inserting pause states
-        if (i < melodyNotes.length - 1) {
-            const gap = melodyNotes[i + 1].time - (current.time + current.duration);
-            if (gap > 0.15) melodyHistory.push({ pitch: "REST", duration: getDurationTag(gap), velocity: 0, isPause: true });
-        }
-    }
-    // Compile Melody Markov Brain States & Transitions
-    melodyBrain.states = melodyHistory;
-    for (let i = 0; i < melodyHistory.length - 1; i++) {
-        const key = `${melodyHistory[i].pitch}_${melodyHistory[i].duration}`;
-        if (!melodyBrain.transitionMatrix[key]) melodyBrain.transitionMatrix[key] = [];
-        melodyBrain.transitionMatrix[key].push(melodyHistory[i+1]);
-    }
-}
 
 
 /* =========================================================================
@@ -621,18 +732,31 @@ initCelestialLayout();
 requestAnimationFrame(advanceCelestialPhysics);
 
 // System Initialization & Parallel Boot Protocol.
-async function boot() {
-    try {
-        // Parallel multi-task execution for standard MIDI parsing tasks.
-        await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1);
-        await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2);
-        await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3);
-        // Successful parallel matrix boot completion.
-        statusText.innerText = "Engine is Ready"; statusText.style.color = "#34c759";
-    } catch(e) { 
-        // Boot execution error detection & diagnostic factor log pointers.
-        statusText.innerText = "ERROR"; statusText.style.color = "#ff3b30";
+async function boot(targetMajorRoot = 0, targetMinorRoot = 9) {
+        statusText.innerText = "Calibrating Harmonic Normalizer...";
+        try {
+            await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1, targetMajorRoot, targetMinorRoot);
+            await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2, targetMajorRoot, targetMinorRoot);
+            await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3, targetMajorRoot, targetMinorRoot);
+            
+            // Update UI
+            document.getElementById('k1').innerText = harmonyBrainA.metadata.key;
+            document.getElementById('k2').innerText = harmonyBrainB.metadata.key;
+            document.getElementById('k3').innerText = harmonyBrainC.metadata.key;
+            
+            statusText.innerText = "Engine is Ready (Key Normalization Active)"; 
+            statusText.style.color = "#34c759";
+        } catch(e) { 
+            console.error(e);
+            statusText.innerText = "ERROR: Could not normalize"; statusText.style.color = "#ff3b30";
+        }
     }
-}
-// Final matrix boot activation.
-boot();
+
+    // The listener for the key selector — value is "majorRootIndex:minorRootIndex"
+    document.getElementById('key-selector').addEventListener('change', (e) => {
+        clearAllPlaybacks();
+        const [majorRoot, minorRoot] = e.target.value.split(':').map(Number);
+        boot(majorRoot, minorRoot);
+    });
+// Final matrix boot activation (default: C maj / A min).
+boot(0, 9);

@@ -135,6 +135,25 @@
         </div>
 
         <div class="control-group">
+            <label>Machine Tuning (Key)</label>
+            <select id="key-selector" style="width: 100%; background: #111; color: white; padding: 8px; border: 1px solid #333;">
+                <option value="0:9">C maj / A min</option>
+                <option value="7:4">G maj / E min</option>
+                <option value="2:11">D maj / B min</option>
+                <option value="9:6">A maj / F# min</option>
+                <option value="4:1">E maj / C# min</option>
+                <option value="11:8">B maj / G# min</option>
+                <option value="6:3">F# maj / D# min</option>
+                <option value="1:10">Db maj / Bb min</option>
+                <option value="8:5">Ab maj / F min</option>
+                <option value="3:0">Eb maj / C min</option>
+                <option value="10:7">Bb maj / G min</option>
+                <option value="5:2">F maj / D min</option>
+            </select>
+        </div>
+
+
+        <div class="control-group">
             <label>Audition Original Layers</label>
             <div class="deck">
                 <button id="midi1-btn">Track 1</button>
@@ -149,6 +168,14 @@
                 <div class="terminal-line">
                     <span>System Hardware Status:</span>
                     <div id="status-text">Booting Matrix...</div>
+                </div>
+                <div class="terminal-line">
+                    <span>Track Key Normalization:</span>
+                    <div id="key-monitor" style="font-size: 10px; color: #aaa; margin-top: 5px;">
+                        T1: <span id="k1">-</span><br>
+                        T2: <span id="k2">-</span><br>
+                        T3: <span id="k3">-</span>
+                    </div>
                 </div>
                 <div class="terminal-line">
                     <span>Target State Matrix Readout:</span>
