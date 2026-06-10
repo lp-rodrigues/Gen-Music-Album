@@ -163,9 +163,13 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
     const rawNotes = activeTrack.notes;
 
     // --- AUDITION SNAPSHOT (always original, never transposed) ---
-    rawNotes.forEach(n => sequenceContainer.push({
-        time: n.time, note: n.name, duration: n.duration, velocity: n.velocity
-    }));
+    rawNotes.forEach(n => {
+        sequenceContainer.push({
+            time: n.time, note: n.name,
+            duration: Math.min(n.duration, 4.0),
+            velocity: n.velocity
+        });
+    });
 
     // --- KEY DETECTION (runs on original notes) ---
     const detected = detectKey(rawNotes);
@@ -499,12 +503,18 @@ function triggerMelodyGeneration(time) {
 
 // Isolated Schedulers Builder: Compiles a raw data array into a Tone.Part scheduled object for direct synthesis routing
 function buildTonePartFromContainer(containerData) {
+    const MAX_NOTE_DURATION = 4.0;
+
     return new Tone.Part((time, event) => {
         if (event.note) {
+            const safeDuration = Math.min(event.duration, MAX_NOTE_DURATION);
             if (Tone.Midi(event.note).toMidi() < 60) {
-                polyChordSynth.triggerAttackRelease(event.note, event.duration, time, event.velocity);
+                // Release any lingering instance of this exact pitch before retriggering
+                polyChordSynth.triggerRelease(event.note, time);
+                polyChordSynth.triggerAttackRelease(event.note, safeDuration, time, event.velocity);
             } else {
-                expressiveMelodySynth.triggerAttackRelease(event.note, event.duration, time, event.velocity);
+                expressiveMelodySynth.triggerRelease(event.note, time);
+                expressiveMelodySynth.triggerAttackRelease(event.note, safeDuration, time, event.velocity);
             }
         }
     }, containerData);
@@ -531,6 +541,8 @@ function clearAllPlaybacks() {
     isPlayingOrig3 = false; if (midi3Btn) midi3Btn.classList.remove('active');
 
     Tone.Transport.stop(); Tone.Transport.position = 0;
+    if (polyChordSynth) polyChordSynth.releaseAll();
+    if (expressiveMelodySynth) expressiveMelodySynth.releaseAll();
     if (hudVectorDisplay) hudVectorDisplay.innerText = "Engine Standby";
 }
 
