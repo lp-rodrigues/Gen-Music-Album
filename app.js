@@ -1,137 +1,103 @@
 /* =========================================================================
    # 1. Global App Playback & Audio States
-   # Defines the core data structures and variables used across the application.
    ========================================================================= */
 
-// Audio engine components for standard Web Audio processing
 let polyChordSynth, expressiveMelodySynth, delay, reverb, timbreFilter, masterLimiter, distortion;
 
-// Generative playback control flags
 let isPlayingGenerative = false;
-
-// Original MIDI audition track control flags
 let isPlayingOrig1 = false, isPlayingOrig2 = false, isPlayingOrig3 = false;
-
-// Schedulers for executing the standard (non-generative) MIDI track data
 let originalPart1, originalPart2, originalPart3;
-
-// Containers to store the raw parsed note data for isolated track auditioning
 let originalSequenceData1 = [], originalSequenceData2 = [], originalSequenceData3 = [];
-
-// Schedulers for generative audio loop execution
 let harmonyLoopEvent = null, melodyLoopEvent = null;
-
-// Track pointers to store the "last played" generative state, enabling coherent future transitions
-let currentChordState = null, currentMelodyState = null;      
-
-// Interpolated mixing weights (Barycentric Influence Matrix), defining how closely we replicate standard tracks 1, 2, or 3.
+let currentChordState = null, currentMelodyState = null;
 let weights = { w1: 0.333, w2: 0.333, w3: 0.333 };
 
-// Multi-Engine Markov Brains Arrays: Stores the probabilistic note relationships extracted from the MIDI files
 let harmonyBrainA = { states: [], transitionMatrix: {} }, harmonyBrainB = { states: [], transitionMatrix: {} }, harmonyBrainC = { states: [], transitionMatrix: {} };
-let melodyBrainA = { states: [], transitionMatrix: {} }, melodyBrainB = { states: [], transitionMatrix: {} }, melodyBrainC = { states: [], transitionMatrix: {} };
+let melodyBrainA  = { states: [], transitionMatrix: {} }, melodyBrainB  = { states: [], transitionMatrix: {} }, melodyBrainC  = { states: [], transitionMatrix: {} };
 
-// AUTOMATION STATE: True = Locked (Automated Firefly tracking), False = Unlocked (Manual Slider Override)
 let isSystemLocked = true;
-
-// Active Target Tracking Pointer ID: Defines which "cylinder" the automated firefly is currently navigating toward.
 let activeTargetMusicBoxId = 1;
 
-// Celestial Parameter Ranges: Defined bounds for mapping lunar data to musical parameters (e.g., distance to BPM)
 const DIST_MIN = 363000;
 const DIST_MAX = 406000;
-const BPM_MIN = 25;
-const BPM_MAX = 100;
+const BPM_MIN  = 25;
+const BPM_MAX  = 100;
 
-let currentBpm = 60;
+let currentBpm   = 60;
 let currentPhase = 0;
 
 
 /* =========================================================================
    # 2. DOM Selectors & UI Data Mappings
-   # Connects variables to specific elements in the index.html user interface.
    ========================================================================= */
 
-// Text HUD displays
-const statusText = document.getElementById('status-text');
+const statusText      = document.getElementById('status-text');
 const hudVectorDisplay = document.getElementById('live-vector-display');
-const debugText = document.getElementById('blend-display-debug');
+const debugText       = document.getElementById('blend-display-debug');
 
-// Main command interaction buttons
-const playBtn = document.getElementById('main-art-toggle');
-const lockBtn = document.getElementById('lock-toggle-btn');
+const playBtn  = document.getElementById('main-art-toggle');
+const lockBtn  = document.getElementById('lock-toggle-btn');
 
-// Isolated original layer audition buttons
-const midi1Btn = document.getElementById('midi1-btn'), midi2Btn = document.getElementById('midi2-btn'), midi3Btn = document.getElementById('midi3-btn'); 
+const midi1Btn = document.getElementById('midi1-btn');
+const midi2Btn = document.getElementById('midi2-btn');
+const midi3Btn = document.getElementById('midi3-btn');
 
-// Global audio engine dynamic control sliders
-const tempoSlider = document.getElementById('tempo-slider'), tempoVal = document.getElementById('tempo-val');
+const tempoSlider = document.getElementById('tempo-slider');
+const tempoVal    = document.getElementById('tempo-val');
 const chaosSlider = document.getElementById('chaos-slider');
 
-// Manual Barycentric Weight mixing sliders
 const w1Slider = document.getElementById('w1-slider'), w1Val = document.getElementById('w1-val');
 const w2Slider = document.getElementById('w2-slider'), w2Val = document.getElementById('w2-val');
 const w3Slider = document.getElementById('w3-slider'), w3Val = document.getElementById('w3-val');
 
 
 /* =========================================================================
-   # 3. Audio Visualization Dynamics (Barycentric Skin Colors)
-   # Mappings to color the 3D visual chassis based on musical pitch and location data.
+   # 3. Audio Visualization Dynamics
    ========================================================================= */
 
-// Hardware dynamic ambient bases: Maps musical root notes to visual base-layer color shift
 const pitchColorMap = {
     'C': { r: 14, g: 15, b: 17 }, 'D': { r: 20, g: 18, b: 24 }, 'E': { r: 24, g: 16, b: 16 },
     'F': { r: 14, g: 22, b: 18 }, 'G': { r: 24, g: 22, b: 16 }, 'A': { r: 18, g: 14, b: 24 }, 'B': { r: 14, g: 20, b: 24 }
 };
 
-// State variables to track ambient lighting transition
-let currentTargetColor = { r: 14, g: 15, b: 17 }, currentBackgroundColor = { r: 14, g: 15, b: 17 };
+let currentTargetColor     = { r: 14, g: 15, b: 17 };
+let currentBackgroundColor = { r: 14, g: 15, b: 17 };
 
-// Visual mapping utility: Converts raw audio decimal duration to a musical notation label (e.g., "4n" for quarter note)
 const getDurationTag = (dur) => {
-    if (dur <= 0.18) return "16n"; if (dur <= 0.38) return "8n"; if (dur <= 0.75) return "4n"; if (dur <= 1.4) return "2n"; return "1m"; 
+    if (dur <= 0.18) return "16n";
+    if (dur <= 0.38) return "8n";
+    if (dur <= 0.75) return "4n";
+    if (dur <= 1.4)  return "2n";
+    return "1m";
 };
 
 
 /* =========================================================================
    # 4. HARMONIC NORMALIZATION ENGINE
-   # Key detection (Krumhansl-Schmuckler) + mode-preserving transposition.
-   # This runs BEFORE Markov matrix building. The audition containers always
-   # receive the original, un-transposed notes. Only the Markov matrices
-   # receive the transposed notes, so all three tracks share one harmonic field.
    ========================================================================= */
 
-const NOTE_NAMES = ["C", "C#", "D", "D#", "E", "F", "F#", "G", "G#", "A", "A#", "B"];
-
-// Krumhansl-Kessler tonal hierarchy weights
-const KS_MAJOR = [6.35, 2.23, 3.48, 2.33, 4.38, 4.09, 2.52, 5.19, 2.39, 3.66, 2.29, 2.88];
-const KS_MINOR = [6.33, 2.68, 3.52, 5.38, 2.60, 3.53, 2.54, 4.75, 3.98, 2.69, 3.34, 3.17];
+const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
+const KS_MAJOR   = [6.35,2.23,3.48,2.33,4.38,4.09,2.52,5.19,2.39,3.66,2.29,2.88];
+const KS_MINOR   = [6.33,2.68,3.52,5.38,2.60,3.53,2.54,4.75,3.98,2.69,3.34,3.17];
 
 function pearsonCorrelation(a, b) {
     const n = a.length;
-    const meanA = a.reduce((s, v) => s + v, 0) / n;
-    const meanB = b.reduce((s, v) => s + v, 0) / n;
+    const meanA = a.reduce((s,v) => s+v, 0) / n;
+    const meanB = b.reduce((s,v) => s+v, 0) / n;
     let num = 0, denomA = 0, denomB = 0;
     for (let i = 0; i < n; i++) {
-        const da = a[i] - meanA, db = b[i] - meanB;
-        num += da * db; denomA += da * da; denomB += db * db;
+        const da = a[i]-meanA, db = b[i]-meanB;
+        num += da*db; denomA += da*da; denomB += db*db;
     }
     return num / Math.sqrt(denomA * denomB);
 }
 
-// Detects the key of a set of notes using duration-weighted pitch-class histogram
-// correlated against 24 K-S tonal profiles. Returns { root, index, quality }.
 function detectKey(notes) {
     const histogram = new Array(12).fill(0);
-    notes.forEach(n => {
-        const pc = n.midi % 12;
-        histogram[pc] += (n.duration || 0.5);
-    });
-
+    notes.forEach(n => { histogram[n.midi % 12] += (n.duration || 0.5); });
     let bestScore = -Infinity, bestRoot = 0, bestQuality = "major";
     for (let root = 0; root < 12; root++) {
-        const rotated = histogram.map((_, i) => histogram[(i + root) % 12]);
+        const rotated = histogram.map((_,i) => histogram[(i+root) % 12]);
         const majorScore = pearsonCorrelation(rotated, KS_MAJOR);
         const minorScore = pearsonCorrelation(rotated, KS_MINOR);
         if (majorScore > bestScore) { bestScore = majorScore; bestRoot = root; bestQuality = "major"; }
@@ -140,9 +106,6 @@ function detectKey(notes) {
     return { root: NOTE_NAMES[bestRoot], index: bestRoot, quality: bestQuality };
 }
 
-// Computes how many semitones to shift a detected key to reach the target collection,
-// while preserving mode: a minor track targets the minor root, a major track targets
-// the major root. Chooses the shortest path (max ±6 semitones).
 function computeShift(detected, targetMajorRoot, targetMinorRoot) {
     const targetRoot = detected.quality === 'minor' ? targetMinorRoot : targetMajorRoot;
     const raw = (targetRoot - detected.index + 12) % 12;
@@ -152,7 +115,6 @@ function computeShift(detected, targetMajorRoot, targetMinorRoot) {
 
 /* =========================================================================
    # 5. MIDI Feature Extraction & Feature Splitting Engine
-   # Parses raw MIDI file data into melodic (high) and harmonic (bass) Markov chains.
    ========================================================================= */
 
 async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceContainer, targetMajorRoot, targetMinorRoot, keyDisplayId) {
@@ -162,60 +124,42 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
 
     const rawNotes = activeTrack.notes;
 
-    // --- AUDITION SNAPSHOT (always original, never transposed) ---
     rawNotes.forEach(n => {
-        sequenceContainer.push({
-            time: n.time, note: n.name,
-            duration: Math.min(n.duration, 4.0),
-            velocity: n.velocity
-        });
+        sequenceContainer.push({ time: n.time, note: n.name, duration: Math.min(n.duration, 4.0), velocity: n.velocity });
     });
 
-    // --- KEY DETECTION (runs on original notes) ---
     const detected = detectKey(rawNotes);
-    const shift = computeShift(detected, targetMajorRoot, targetMinorRoot);
+    const shift    = computeShift(detected, targetMajorRoot, targetMinorRoot);
 
-    // --- TRANSPOSITION (only for Markov building; audition container already saved above) ---
-    // We explicitly copy each property rather than using spread ({...n}) because
-    // @tonejs/midi Note objects define properties like duration and ticks as prototype
-    // getters, which are invisible to the spread operator and would come through as undefined.
     const transposedNotes = rawNotes.map(n => ({
-        time:         n.time,
-        duration:     n.duration,
-        velocity:     n.velocity,
-        originalMidi: n.midi,
-        midi:         n.midi + shift,
-        name:         Tone.Midi(n.midi + shift).toNote()
+        time: n.time, duration: n.duration, velocity: n.velocity,
+        originalMidi: n.midi, midi: n.midi + shift, name: Tone.Midi(n.midi + shift).toNote()
     }));
 
-    // Update key normalisation display
-    const shiftLabel = shift === 0 ? 'no shift' : shift > 0 ? `+${shift} st` : `${shift} st`;
+    const shiftLabel   = shift === 0 ? 'no shift' : shift > 0 ? `+${shift} st` : `${shift} st`;
     const qualityLabel = detected.quality === 'minor' ? 'min' : 'maj';
-    const keyEl = keyDisplayId ? document.getElementById(keyDisplayId) : null;
+    const keyEl        = keyDisplayId ? document.getElementById(keyDisplayId) : null;
     if (keyEl) keyEl.innerText = `${detected.root} ${qualityLabel}  →  ${shiftLabel}`;
     harmonyBrain.metadata = { key: `${detected.root} ${qualityLabel} → ${shiftLabel}` };
 
-    // --- HARMONY EXTRACTION (below threshold in ORIGINAL register) ---
     const timeBlocks = {};
     transposedNotes.forEach(note => {
-        const roundedTime = Math.round(note.time * 8) / 8;
-        if (!timeBlocks[roundedTime]) timeBlocks[roundedTime] = [];
-        timeBlocks[roundedTime].push(note);
+        const rt = Math.round(note.time * 8) / 8;
+        if (!timeBlocks[rt]) timeBlocks[rt] = [];
+        timeBlocks[rt].push(note);
     });
 
-    const chordTimeKeys = Object.keys(timeBlocks).sort((a, b) => a - b);
+    const chordTimeKeys = Object.keys(timeBlocks).sort((a,b) => a-b);
     let chordHistory = [];
-
     for (let i = 0; i < chordTimeKeys.length; i++) {
-        const timeKey = parseFloat(chordTimeKeys[i]);
+        const timeKey     = parseFloat(chordTimeKeys[i]);
         const notesInBlock = timeBlocks[timeKey];
-        // Use originalMidi for threshold — preserves composer's bass/melody register intent
-        const bassNotes = notesInBlock.filter(n => n.originalMidi < 60).sort((a, b) => a.originalMidi - b.originalMidi);
+        const bassNotes   = notesInBlock.filter(n => n.originalMidi < 60).sort((a,b) => a.originalMidi - b.originalMidi);
         if (bassNotes.length > 0) {
             const chordString = bassNotes.map(n => n.name).join("-");
             let duration = (i < chordTimeKeys.length - 1)
-                ? parseFloat(chordTimeKeys[i + 1]) - timeKey
-                : bassNotes.reduce((max, n) => Math.max(max, n.duration), 1.0);
+                ? parseFloat(chordTimeKeys[i+1]) - timeKey
+                : bassNotes.reduce((max,n) => Math.max(max, n.duration), 1.0);
             chordHistory.push({ notes: chordString, duration: getDurationTag(duration) });
         }
     }
@@ -224,17 +168,16 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
     for (let i = 0; i < chordHistory.length - 1; i++) {
         const key = `${chordHistory[i].notes}_${chordHistory[i].duration}`;
         if (!harmonyBrain.transitionMatrix[key]) harmonyBrain.transitionMatrix[key] = [];
-        harmonyBrain.transitionMatrix[key].push(chordHistory[i + 1]);
+        harmonyBrain.transitionMatrix[key].push(chordHistory[i+1]);
     }
 
-    // --- MELODY EXTRACTION (at/above threshold in ORIGINAL register) ---
     const melodyNotes = transposedNotes.filter(n => n.originalMidi >= 60);
     let melodyHistory = [];
     for (let i = 0; i < melodyNotes.length; i++) {
         const current = melodyNotes[i];
         melodyHistory.push({ pitch: current.name, duration: getDurationTag(current.duration), velocity: current.velocity, isPause: false });
         if (i < melodyNotes.length - 1) {
-            const gap = melodyNotes[i + 1].time - (current.time + current.duration);
+            const gap = melodyNotes[i+1].time - (current.time + current.duration);
             if (gap > 0.15) melodyHistory.push({ pitch: "REST", duration: getDurationTag(gap), velocity: 0, isPause: true });
         }
     }
@@ -243,24 +186,21 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
     for (let i = 0; i < melodyHistory.length - 1; i++) {
         const key = `${melodyHistory[i].pitch}_${melodyHistory[i].duration}`;
         if (!melodyBrain.transitionMatrix[key]) melodyBrain.transitionMatrix[key] = [];
-        melodyBrain.transitionMatrix[key].push(melodyHistory[i + 1]);
+        melodyBrain.transitionMatrix[key].push(melodyHistory[i+1]);
     }
 }
 
+
 /* =========================================================================
    # 6. CELESTIAL ENGINE
-   # Gets real-time lunar data from SunCalc and maps it to global audio parameters
    ========================================================================= */
 
-// Helper function to map values (e.g., distance 363k-405k -> BPM 100-25)
 function mapValue(value, inMin, inMax, outMin, outMax) {
-    // Clamping the value to ensure it stays within our logical bounds
     const clamped = Math.min(Math.max(value, inMin), inMax);
     return (clamped - inMin) * (outMax - outMin) / (inMax - inMin) + outMin;
 }
 
 function getMoonPhaseName(phase) {
-    // We map the 0-1 cycle to more precise labels
     if (phase < 0.05 || phase > 0.95) return "New Moon";
     if (phase < 0.20) return "Waxing Crescent";
     if (phase < 0.30) return "First Quarter";
@@ -268,56 +208,35 @@ function getMoonPhaseName(phase) {
     if (phase < 0.55) return "Full Moon";
     if (phase < 0.70) return "Waning Gibbous";
     if (phase < 0.80) return "Last Quarter";
-    return "Waning Crescent"; // 0.80 to 0.95
+    return "Waning Crescent";
 }
 
 function updateCelestialParameters(isManual = false) {
     let distance, distortionAmount;
-    
-    // Add to updateCelestialParameters
-    const debugMoon = SunCalc.getMoonIllumination(new Date());
-    console.log(`DEBUG: Phase Value: ${debugMoon.phase.toFixed(2)}, Illumination: ${(debugMoon.fraction * 100).toFixed(0)}%`);
-    
+
     if (isManual) {
-        currentBpm = parseFloat(document.getElementById('tempo-slider').value);
+        currentBpm   = parseFloat(document.getElementById('tempo-slider').value);
         currentPhase = parseFloat(document.getElementById('test-phase').value);
-        
-        // Calculate distance only for display purposes (no audio dependency)
-        distance = mapValue(currentBpm, BPM_MIN, BPM_MAX, DIST_MAX, DIST_MIN);
+        distance     = mapValue(currentBpm, BPM_MIN, BPM_MAX, DIST_MAX, DIST_MIN);
     } else {
-        const now = new Date();
+        const now      = new Date();
         const moonIllum = SunCalc.getMoonIllumination(now);
-        currentPhase = moonIllum.phase;
-        distance = SunCalc.getMoonPosition(now, 0, 0).distance;
-        
-        currentBpm = mapValue(distance, DIST_MIN, DIST_MAX, BPM_MAX, BPM_MIN);
-
-        // Apply the current month's key (skips rebuild if month hasn't changed)
+        currentPhase   = moonIllum.phase;
+        distance       = SunCalc.getMoonPosition(now, 0, 0).distance;
+        currentBpm     = mapValue(distance, DIST_MIN, DIST_MAX, BPM_MAX, BPM_MIN);
         applyMonth(now.getMonth());
-        
-        console.log(`DEBUG: Distance: ${distance.toFixed(0)} km, Clamped BPM: ${currentBpm.toFixed(2)}`);
     }
 
-    // Triangular mapping (Peak at 0.5, Min at 0.0 and 1.0)
-    const peakAtFullMoon = 1 - (Math.abs(currentPhase - 0.5) * 2); 
+    const peakAtFullMoon  = 1 - (Math.abs(currentPhase - 0.5) * 2);
+    const freq            = mapValue(peakAtFullMoon, 0, 1, 400, 4000);
+    distortionAmount      = mapValue(peakAtFullMoon, 0, 1, 0, 0.5);
 
-    // Map the 0 to 1 range (where 1 is Full Moon) to your desired ranges
-    const freq = mapValue(peakAtFullMoon, 0, 1, 400, 4000);
-    distortionAmount = mapValue(peakAtFullMoon, 0, 1, 0, 0.5);
+    if (typeof currentBpm !== 'number' || isNaN(currentBpm)) { console.warn("Invalid BPM."); return; }
 
-    // SAFETY GUARD:
-    // If bpm is not a valid number (NaN/null), stop immediately.
-    if (typeof currentBpm !== 'number' || isNaN(currentBpm)) {
-        console.warn("Skipping audio update: Invalid BPM calculated.");
-        return; 
-    }
-
-    // Apply to Audio Engine
     Tone.Transport.bpm.rampTo(currentBpm, 0.1);
     if (timbreFilter) timbreFilter.frequency.rampTo(freq, 0.5);
     if (typeof distortion !== 'undefined') distortion.distortion = distortionAmount;
 
-    // --- UI UPDATES ---
     const elPhase   = document.getElementById('mon-phase');
     const elFreq    = document.getElementById('mon-freq');
     const elDistort = document.getElementById('mon-distort');
@@ -328,8 +247,6 @@ function updateCelestialParameters(isManual = false) {
     if (elBpmLbl)  elBpmLbl.innerText  = `BPM: ${Math.round(currentBpm)} | Distance: ${Math.round(distance).toLocaleString()} km | ${isManual ? 'Manual' : 'Auto'}`;
 }
 
-// Single source of truth: month index (0=Jan) → major and minor roots
-// Follows circle of fifths: Jan=C maj/A min, Feb=G maj/E min, etc.
 const MONTH_KEYS = [
     { name: "January",   label: "C maj / A min",   maj: 0,  min: 9  },
     { name: "February",  label: "G maj / E min",   maj: 7,  min: 4  },
@@ -345,23 +262,16 @@ const MONTH_KEYS = [
     { name: "December",  label: "F maj / D min",   maj: 5,  min: 2  },
 ];
 
-// Tracks the last month index that was actually booted, to avoid redundant re-analysis
 let _lastBootedMonthIndex = -1;
 
-// THE single entry point for all key changes.
-// Rebuilds Markov matrices and syncs the key-selector UI.
-// Safe to call multiple times — skips rebuild if month hasn't changed.
 async function applyMonth(monthIndex, force = false) {
     if (monthIndex === _lastBootedMonthIndex && !force) return;
     _lastBootedMonthIndex = monthIndex;
 
     const key = MONTH_KEYS[monthIndex];
-
-    // Sync the key-selector dropdown to show the current month
     const sel = document.getElementById('key-selector');
     if (sel) sel.value = monthIndex;
 
-    // Reset brains and containers
     harmonyBrainA = { states: [], transitionMatrix: {} }; harmonyBrainB = { states: [], transitionMatrix: {} }; harmonyBrainC = { states: [], transitionMatrix: {} };
     melodyBrainA  = { states: [], transitionMatrix: {} }; melodyBrainB  = { states: [], transitionMatrix: {} }; melodyBrainC  = { states: [], transitionMatrix: {} };
     originalSequenceData1 = []; originalSequenceData2 = []; originalSequenceData3 = [];
@@ -380,72 +290,62 @@ async function applyMonth(monthIndex, force = false) {
 
 
 /* =========================================================================
-   # 7. Audio Pipeline Configuration (Calibrated Celesta)
-   # Restores the pure music box/celesta glass-timbre sound engine while protecting against clipping distortion.
+   # 7. Audio Pipeline Configuration
    ========================================================================= */
+
 function setupAudioEngine() {
     if (polyChordSynth) return;
 
-    // MASTER LIMITER: Prevent accumulating audio signal peaks from clipping
     masterLimiter = new Tone.Limiter(0).toDestination();
+    reverb        = new Tone.Reverb({ decay: 7.5, wet: 0.55 }).connect(masterLimiter);
+    delay         = new Tone.FeedbackDelay({ delayTime: "4n.", feedback: 0.35, wet: 0.25 }).connect(reverb);
+    timbreFilter  = new Tone.Filter({ type: "lowpass", frequency: 1200, Q: 1 }).connect(delay);
+    distortion    = new Tone.Distortion(0.01).connect(timbreFilter);
 
-    // FX CHAIN: Standard stereo effects processed through the limiter
-    reverb = new Tone.Reverb({ decay: 7.5, wet: 0.55 }).connect(masterLimiter);
-    delay = new Tone.FeedbackDelay({ delayTime: "4n.", feedback: 0.35, wet: 0.25 }).connect(reverb);
-    timbreFilter = new Tone.Filter({ type: "lowpass", frequency: 1200, Q: 1 }).connect(delay);
-    distortion = new Tone.Distortion(0.01).connect(timbreFilter);
-
-    // CHORD ENGINE: Pure Music Box sine tone (Lower baseline gain for stacking headroom)
     polyChordSynth = new Tone.PolySynth(Tone.Synth, {
-        oscillator: { type: "sine" }, envelope: { attack: 0.02, decay: 0.8, sustain: 0.3, release: 1.5 } 
-    }).connect(timbreFilter); 
-    polyChordSynth.volume.value = -16; 
+        oscillator: { type: "sine" }, envelope: { attack: 0.02, decay: 0.8, sustain: 0.3, release: 1.5 }
+    }).connect(timbreFilter);
+    polyChordSynth.volume.value = -16;
 
-    // MELODY ENGINE: Instant attack hammer transient strike sine tone
     expressiveMelodySynth = new Tone.PolySynth(Tone.Synth, {
         oscillator: { type: "sine" }, envelope: { attack: 0.005, decay: 0.2, sustain: 0.1, release: 0.3 }
     }).connect(distortion);
     expressiveMelodySynth.volume.value = -10;
 }
 
+
 /* =========================================================================
-   # 8. Generative Music Logic (Probabilistic Interpolation)
-   # Defines how the engine navigates Markov chains to select the "next note".
+   # 8. Generative Music Logic
    ========================================================================= */
 
-// Barycentric Influence Mixer: Calculates influence weights (W1, W2, W3) dynamically to provide live composition balancing.
 function processAutomatedBarycentricInfluence() {
     if (!isSystemLocked) return;
-    const centerX = canvas.width / 2; const centerY = canvas.height / 2;
+    const centerX = canvas.width / 2, centerY = canvas.height / 2;
     const d1 = Math.sqrt((musicBoxes[0].x - centerX)**2 + (musicBoxes[0].y - centerY)**2);
     const d2 = Math.sqrt((musicBoxes[1].x - centerX)**2 + (musicBoxes[1].y - centerY)**2);
     const d3 = Math.sqrt((musicBoxes[2].x - centerX)**2 + (musicBoxes[2].y - centerY)**2);
-
     const maxRadius = 600;
     let s1 = Math.max(0.01, maxRadius - d1), s2 = Math.max(0.01, maxRadius - d2), s3 = Math.max(0.01, maxRadius - d3);
     const total = s1 + s2 + s3;
     weights.w1 = s1 / total; weights.w2 = s2 / total; weights.w3 = s3 / total;
 
-    // Update Manual Mixer Sliders
     w1Slider.value = Math.round(weights.w1 * 100); w1Val.innerText = w1Slider.value + "%";
     w2Slider.value = Math.round(weights.w2 * 100); w2Val.innerText = w2Slider.value + "%";
     w3Slider.value = Math.round(weights.w3 * 100); w3Val.innerText = w3Slider.value + "%";
     if (debugText) debugText.innerText = `Song 1: ${w1Slider.value}% | Song 2: ${w2Slider.value}% | Song 3: ${w3Slider.value}%`;
 }
 
-// Probabilistic Brain Selector: Dynamically selects the active database (A, B, or C) based on current Barycentric Influence matrix.
 function selectBrainFromTernary(brainA, brainB, brainC) {
     const rand = Math.random();
-    if (rand < weights.w1) { activeTargetMusicBoxId = 1; return brainA; }
+    if (rand < weights.w1)              { activeTargetMusicBoxId = 1; return brainA; }
     if (rand < weights.w1 + weights.w2) { activeTargetMusicBoxId = 2; return brainB; }
     activeTargetMusicBoxId = 3; return brainC;
 }
 
-// GENERATIVE TASK 1: Harmony Scheduler
 function triggerHarmonyGeneration(time) {
     if (!isPlayingGenerative) return;
     const wanderFactor = chaosSlider ? parseFloat(chaosSlider.value) : 0.15;
-    const activeBrain = selectBrainFromTernary(harmonyBrainA, harmonyBrainB, harmonyBrainC);
+    const activeBrain  = selectBrainFromTernary(harmonyBrainA, harmonyBrainB, harmonyBrainC);
     if (!currentChordState) currentChordState = activeBrain.states[0] || { notes: "C3-E3-G3", duration: "2n" };
 
     const lookupKey = `${currentChordState.notes}_${currentChordState.duration}`;
@@ -459,22 +359,17 @@ function triggerHarmonyGeneration(time) {
     currentChordState = nextState;
     const duration = currentChordState.duration;
     polyChordSynth.triggerAttackRelease(currentChordState.notes.split("-"), duration, time, 0.4);
-    
-    // --- FORCE UPDATE BY DIRECT ID LOOKUP ---
+
     const targetDisplay = document.getElementById('live-vector-display');
-    if (targetDisplay) {
-        targetDisplay.innerText = `${currentChordState.notes} [${duration}]`;
-    }
+    if (targetDisplay) targetDisplay.innerText = `${currentChordState.notes} [${duration}]`;
 
     harmonyLoopEvent.interval = duration;
 }
 
-// GENERATIVE TASK 2: Melody Scheduler
 function triggerMelodyGeneration(time) {
     if (!isPlayingGenerative) return;
-
     const wanderFactor = chaosSlider ? parseFloat(chaosSlider.value) : 0.15;
-    const activeBrain = selectBrainFromTernary(melodyBrainA, melodyBrainB, melodyBrainC);
+    const activeBrain  = selectBrainFromTernary(melodyBrainA, melodyBrainB, melodyBrainC);
     if (!currentMelodyState) currentMelodyState = activeBrain.states[0] || { pitch: "C4", duration: "8n", velocity: 0.6, isPause: false };
 
     const lookupKey = `${currentMelodyState.pitch}_${currentMelodyState.duration}`;
@@ -497,19 +392,14 @@ function triggerMelodyGeneration(time) {
 
 
 /* =========================================================================
-   # 9. Audition Playback Engine & Standard Schedulers
-   # Logic to play back standard, non-generative, isolated MIDI tracks.
+   # 9. Audition Playback Engine
    ========================================================================= */
 
-// Isolated Schedulers Builder: Compiles a raw data array into a Tone.Part scheduled object for direct synthesis routing
 function buildTonePartFromContainer(containerData) {
-    const MAX_NOTE_DURATION = 4.0;
-
     return new Tone.Part((time, event) => {
         if (event.note) {
-            const safeDuration = Math.min(event.duration, MAX_NOTE_DURATION);
+            const safeDuration = Math.min(event.duration, 4.0);
             if (Tone.Midi(event.note).toMidi() < 60) {
-                // Release any lingering instance of this exact pitch before retriggering
                 polyChordSynth.triggerRelease(event.note, time);
                 polyChordSynth.triggerAttackRelease(event.note, safeDuration, time, event.velocity);
             } else {
@@ -520,72 +410,55 @@ function buildTonePartFromContainer(containerData) {
     }, containerData);
 }
 
-// Playback Cleanup Utility: Safely stops and disposes of all active synthesis and loop schedulers across all playback modes.
 function clearAllPlaybacks() {
-    // Stop generative mode loop schedulers
     if (isPlayingGenerative) {
         isPlayingGenerative = false;
         if (playBtn) { playBtn.innerText = "Start Sound"; playBtn.classList.remove('active-stream'); }
         if (harmonyLoopEvent) { harmonyLoopEvent.stop(); harmonyLoopEvent.dispose(); harmonyLoopEvent = null; }
-        if (melodyLoopEvent) { melodyLoopEvent.stop(); melodyLoopEvent.dispose(); melodyLoopEvent = null; }
+        if (melodyLoopEvent)  { melodyLoopEvent.stop();  melodyLoopEvent.dispose();  melodyLoopEvent = null; }
     }
-    
-    // Disconnect and stop isolated audition Parts 1, 2, and 3
     if (originalPart1) { originalPart1.stop(); originalPart1.dispose(); originalPart1 = null; }
     isPlayingOrig1 = false; if (midi1Btn) midi1Btn.classList.remove('active');
-
     if (originalPart2) { originalPart2.stop(); originalPart2.dispose(); originalPart2 = null; }
     isPlayingOrig2 = false; if (midi2Btn) midi2Btn.classList.remove('active');
-
     if (originalPart3) { originalPart3.stop(); originalPart3.dispose(); originalPart3 = null; }
     isPlayingOrig3 = false; if (midi3Btn) midi3Btn.classList.remove('active');
 
     Tone.Transport.stop(); Tone.Transport.position = 0;
-    if (polyChordSynth) polyChordSynth.releaseAll();
+    if (polyChordSynth)        polyChordSynth.releaseAll();
     if (expressiveMelodySynth) expressiveMelodySynth.releaseAll();
-    if (hudVectorDisplay) hudVectorDisplay.innerText = "Engine Standby";
+    if (hudVectorDisplay)      hudVectorDisplay.innerText = "Engine Standby";
 }
 
 
 /* =========================================================================
    # 10. User Interaction & Control Handlers
-   # Connects HTML buttons and sliders to JavaScript execution logic.
    ========================================================================= */
 
-// *** MAIN COMMAND: Start/Stop Generative Sound Engine ***
 if (playBtn) playBtn.addEventListener('click', async () => {
-    await Tone.start(); 
+    await Tone.start();
     setupAudioEngine();
-    
     if (isPlayingGenerative) {
         clearAllPlaybacks();
         currentTargetColor = { r: 14, g: 15, b: 17 };
-    } 
-    else {
-        clearAllPlaybacks(); 
-        isPlayingGenerative = true; 
-        playBtn.innerText = "Stop Sound"; 
+    } else {
+        clearAllPlaybacks();
+        isPlayingGenerative = true;
+        playBtn.innerText = "Stop Sound";
         playBtn.classList.add('active-stream');
-        currentChordState = null; 
-        currentMelodyState = null;
-        
-        // Boot standard generative loops
+        currentChordState = null; currentMelodyState = null;
         harmonyLoopEvent = new Tone.Loop((time) => { triggerHarmonyGeneration(time); }, "2n").start(0);
-        melodyLoopEvent = new Tone.Loop((time) => { triggerMelodyGeneration(time); }, "8n").start(0);
-        
-        // Ensure Transport starts AFTER the loops are scheduled so the readout updates instantly
+        melodyLoopEvent  = new Tone.Loop((time) => { triggerMelodyGeneration(time); },  "8n").start(0);
         Tone.Transport.start();
     }
 });
 
-// *** AUDITION COMMAND: Isolated Track Playback Buttons 1, 2, and 3 ***
 if (midi1Btn) midi1Btn.addEventListener('click', async () => {
     await Tone.start(); setupAudioEngine();
-    if (isPlayingOrig1) { clearAllPlaybacks(); } 
-    else {
+    if (isPlayingOrig1) { clearAllPlaybacks(); } else {
         clearAllPlaybacks();
         isPlayingOrig1 = true; midi1Btn.classList.add('active');
-        activeTargetMusicBoxId = 1; // Direct visual firefly tracking override
+        activeTargetMusicBoxId = 1;
         originalPart1 = buildTonePartFromContainer(originalSequenceData1);
         originalPart1.start(0); Tone.Transport.start();
         if (hudVectorDisplay) hudVectorDisplay.innerText = "Auditioning MIDI Track 1";
@@ -594,8 +467,7 @@ if (midi1Btn) midi1Btn.addEventListener('click', async () => {
 
 if (midi2Btn) midi2Btn.addEventListener('click', async () => {
     await Tone.start(); setupAudioEngine();
-    if (isPlayingOrig2) { clearAllPlaybacks(); } 
-    else {
+    if (isPlayingOrig2) { clearAllPlaybacks(); } else {
         clearAllPlaybacks();
         isPlayingOrig2 = true; midi2Btn.classList.add('active');
         activeTargetMusicBoxId = 2;
@@ -607,8 +479,7 @@ if (midi2Btn) midi2Btn.addEventListener('click', async () => {
 
 if (midi3Btn) midi3Btn.addEventListener('click', async () => {
     await Tone.start(); setupAudioEngine();
-    if (isPlayingOrig3) { clearAllPlaybacks(); } 
-    else {
+    if (isPlayingOrig3) { clearAllPlaybacks(); } else {
         clearAllPlaybacks();
         isPlayingOrig3 = true; midi3Btn.classList.add('active');
         activeTargetMusicBoxId = 3;
@@ -618,122 +489,94 @@ if (midi3Btn) midi3Btn.addEventListener('click', async () => {
     }
 });
 
-// *** AUTOMATION CONTROL: System Locked vs Manual Slider Override Toggle ***
 if (lockBtn) lockBtn.addEventListener('click', () => {
     isSystemLocked = !isSystemLocked;
-    
-    // Select all manual inputs
-    const tempoSlider = document.getElementById('tempo-slider');
-    const phaseSlider = document.getElementById('test-phase');
-    const w1 = document.getElementById('w1-slider');
-    const w2 = document.getElementById('w2-slider');
-    const w3 = document.getElementById('w3-slider');
+    const _tempoSlider = document.getElementById('tempo-slider');
+    const _phaseSlider = document.getElementById('test-phase');
+    const _w1 = document.getElementById('w1-slider');
+    const _w2 = document.getElementById('w2-slider');
+    const _w3 = document.getElementById('w3-slider');
 
     if (isSystemLocked) {
-        lockBtn.innerText = "🔒 System Automation: LOCKED"; 
+        lockBtn.innerText = "🔒 System Automation: LOCKED";
         lockBtn.classList.remove('unlocked');
-        
-        // Re-read real astronomical data and apply the actual current month's key
-        _lastBootedMonthIndex = -1; // Force rebuild even if month appears unchanged
-        updateCelestialParameters(false); // this calls applyMonth(now.getMonth()) internally
-        
-        tempoSlider.disabled = true; 
-        phaseSlider.disabled = true; 
-        w1.disabled = true; w2.disabled = true; w3.disabled = true;
-
-        tempoSlider.value = Math.round(currentBpm); 
-        phaseSlider.value = currentPhase.toFixed(2);
-
+        _lastBootedMonthIndex = -1;
+        updateCelestialParameters(false);
+        _tempoSlider.disabled = true; _phaseSlider.disabled = true;
+        _w1.disabled = true; _w2.disabled = true; _w3.disabled = true;
+        _tempoSlider.value = Math.round(currentBpm);
+        _phaseSlider.value = currentPhase.toFixed(2);
         initCelestialLayout();
-
     } else {
-        lockBtn.innerText = "🔓 Manual Override: UNLOCKED"; 
+        lockBtn.innerText = "🔓 Manual Override: UNLOCKED";
         lockBtn.classList.add('unlocked');
-        
-        // Unlock EVERYTHING
-        tempoSlider.disabled = false; 
-        phaseSlider.disabled = false; // Moon Phase Unlocked
-        w1.disabled = false; w2.disabled = false; w3.disabled = false;
-        
-        // Sync UI to current state
+        _tempoSlider.disabled = false; _phaseSlider.disabled = false;
+        _w1.disabled = false; _w2.disabled = false; _w3.disabled = false;
         updateCelestialParameters(false);
     }
 });
 
+if (tempoSlider) tempoSlider.addEventListener('input', () => { if (!isSystemLocked) updateCelestialParameters(true); });
 
-// Tempo Potentiometer Slider Listener
-if (tempoSlider) tempoSlider.addEventListener('input', (e) => {
-    if (!isSystemLocked) { 
-        updateCelestialParameters(true); 
-    }
-});
-
-// Phase Slider Listener
 const phaseSlider = document.getElementById('test-phase');
-if (phaseSlider) phaseSlider.addEventListener('input', (e) => {
-    if (!isSystemLocked) { 
-        updateCelestialParameters(true); 
-    }
-});
+if (phaseSlider) phaseSlider.addEventListener('input', () => { if (!isSystemLocked) updateCelestialParameters(true); });
 
-
-// Barycentric Influence Matrix Manual Mixer Handlers: Updated weight mix calculations
 function handleManualWeightMixUpdate() {
     if (isSystemLocked) return;
     let v1 = parseFloat(w1Slider.value), v2 = parseFloat(w2Slider.value), v3 = parseFloat(w3Slider.value);
     let sum = v1 + v2 + v3;
     if (sum === 0) { v1 = 1; v2 = 1; v3 = 1; sum = 3; }
-    // Recalculate weights relative to the total sum of all three sliders
-    weights.w1 = v1 / sum; weights.w2 = v2 / sum; weights.w3 = v3 / sum;
-    w1Val.innerText = `${Math.round(weights.w1*100)}%`; w2Val.innerText = `${Math.round(weights.w2*100)}%`; w3Val.innerText = `${Math.round(weights.w3*100)}%`;
+    weights.w1 = v1/sum; weights.w2 = v2/sum; weights.w3 = v3/sum;
+    w1Val.innerText = `${Math.round(weights.w1*100)}%`;
+    w2Val.innerText = `${Math.round(weights.w2*100)}%`;
+    w3Val.innerText = `${Math.round(weights.w3*100)}%`;
     if (debugText) debugText.innerText = `Song 1: ${Math.round(weights.w1*100)}% | Song 2: ${Math.round(weights.w2*100)}% | Song 3: ${Math.round(weights.w3*100)}%`;
 }
 if (w1Slider) w1Slider.addEventListener('input', handleManualWeightMixUpdate);
 if (w2Slider) w2Slider.addEventListener('input', handleManualWeightMixUpdate);
 if (w3Slider) w3Slider.addEventListener('input', handleManualWeightMixUpdate);
 
+
 /* =========================================================================
-   # 11. HORIZONTAL CYLINDER RENDERING MODULES
-   # Complete Canvas physics engine and 3D isometric visualization logic.
+   # 11. CANVAS RENDERING ENGINE
    ========================================================================= */
 
-// Canvas Context Setup
 const canvas = document.getElementById('art-surface');
-const ctx = canvas.getContext('2d');
+const ctx    = canvas.getContext('2d');
 
-// Automated Firefly Physics Parameters:zig-zag motion model
 let moon = { x: window.innerWidth / 2, y: window.innerHeight / 2, vx: 2, vy: -1.5, radius: 3, attractionRadius: 400 };
 
-// 3D Music Box Objects (Hardware Cylinders): defines visual geometry, hardware colors, and 2D/3D location matrix data.
 let musicBoxes = [
     { id: 1, x: 0, y: 0, rad: 16, length: 50, rotation: 0, color: "#ff3b30", active: true },
     { id: 2, x: 0, y: 0, rad: 16, length: 50, rotation: 0, color: "#ffcc00", active: true },
     { id: 3, x: 0, y: 0, rad: 16, length: 50, rotation: 0, color: "#007aff", active: true }
 ];
 
-// Reference variable for handling visual "drag and drop" matrix logic
 let draggedMusicBox = null;
 
-// Layout Initialization: Sets initial visual barycentric balance point locations based on standard geometry principles.
-function initCelestialLayout() {
-    canvas.width = window.innerWidth; canvas.height = window.innerHeight;
-    
-    // Snap music boxes back to their default formation
-    musicBoxes[0].x = canvas.width / 2; musicBoxes[0].y = canvas.height * 0.30;
-    musicBoxes[1].x = canvas.width * 0.28; musicBoxes[1].y = canvas.height * 0.65;
-    musicBoxes[2].x = canvas.width * 0.72; musicBoxes[2].y = canvas.height * 0.65;
+// Lamp position — starts centered, stays fixed (ceiling lamp)
+let lampPos = { x: 0, y: 0 };
 
-    // Reset Weights to equal balance if locked
+function initCelestialLayout() {
+    canvas.width  = window.innerWidth;
+    canvas.height = window.innerHeight;
+
+    musicBoxes[0].x = canvas.width / 2;      musicBoxes[0].y = canvas.height * 0.30;
+    musicBoxes[1].x = canvas.width * 0.28;   musicBoxes[1].y = canvas.height * 0.65;
+    musicBoxes[2].x = canvas.width * 0.72;   musicBoxes[2].y = canvas.height * 0.65;
+
+    // Lamp hangs from center-top
+    lampPos.x = canvas.width / 2;
+    lampPos.y = 90;
+
     if (isSystemLocked) {
         weights = { w1: 0.33, w2: 0.33, w3: 0.33 };
-        // Update the slider UI to match the reset weights
         if (w1Slider) w1Slider.value = 1;
         if (w2Slider) w2Slider.value = 1;
         if (w3Slider) w3Slider.value = 1;
     }
 }
 
-// True Isometric AXIS Coordinate Transformation Matrix: Converts flat X/Y data into oblique 3D space projection.
 function isoProject(x, y, z) {
     return {
         x: (x - y) * Math.cos(Math.PI / 6),
@@ -741,196 +584,282 @@ function isoProject(x, y, z) {
     };
 }
 
-// *** MAIN VISUAL ANIMATION & PHYSICS ADVANCEMENT ENGINE ***
+// ─── LAMP DRAWING ────────────────────────────────────────────────────────────
+function drawLamp() {
+    const lx = lampPos.x;
+    const ly = lampPos.y;
+
+    // Wire from ceiling
+    ctx.strokeStyle = 'rgba(160, 140, 100, 0.5)';
+    ctx.lineWidth   = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, 0);
+    ctx.lineTo(lx, ly - 16);
+    ctx.stroke();
+
+    // Shade (trapezoid)
+    ctx.beginPath();
+    ctx.moveTo(lx - 22, ly - 16);
+    ctx.lineTo(lx + 22, ly - 16);
+    ctx.lineTo(lx + 14, ly + 10);
+    ctx.lineTo(lx - 14, ly + 10);
+    ctx.closePath();
+    ctx.fillStyle   = 'rgba(210, 185, 120, 0.18)';
+    ctx.strokeStyle = 'rgba(210, 185, 120, 0.45)';
+    ctx.lineWidth   = 1;
+    ctx.fill();
+    ctx.stroke();
+
+    // Bulb glow point
+    ctx.beginPath();
+    ctx.arc(lx, ly + 10, 3.5, 0, Math.PI * 2);
+    ctx.fillStyle = 'rgba(255, 245, 190, 0.95)';
+    ctx.fill();
+
+    // Wide cone of light cast downward
+    const coneH   = canvas.height * 0.85;
+    const coneW   = canvas.height * 0.70;
+    const coneGrad = ctx.createRadialGradient(lx, ly + 10, 0, lx, ly + 10, coneH);
+    coneGrad.addColorStop(0,    'rgba(255, 240, 180, 0.10)');
+    coneGrad.addColorStop(0.45, 'rgba(255, 230, 150, 0.04)');
+    coneGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
+    ctx.beginPath();
+    ctx.moveTo(lx,            ly + 10);
+    ctx.lineTo(lx - coneW,    canvas.height);
+    ctx.lineTo(lx + coneW,    canvas.height);
+    ctx.closePath();
+    ctx.fillStyle = coneGrad;
+    ctx.fill();
+}
+
+// ─── WINDOW WITH MOON ────────────────────────────────────────────────────────
+function drawWindow() {
+    const winW = 220, winH = 220;
+    const wx   = canvas.width / 2 - winW / 2;
+    const wy   = canvas.height - winH - 40;   // bottom of scene, like a wall window
+
+    // Outer frame
+    ctx.strokeStyle = 'rgba(60, 55, 45, 0.8)';
+    ctx.lineWidth   = 12;
+    ctx.strokeRect(wx, wy, winW, winH);
+
+    // Night sky fill
+    ctx.fillStyle = '#03030a';
+    ctx.fillRect(wx + 6, wy + 6, winW - 12, winH - 12);
+
+    // Cross divider
+    ctx.strokeStyle = 'rgba(60, 55, 45, 0.8)';
+    ctx.lineWidth   = 6;
+    ctx.beginPath();
+    ctx.moveTo(wx + winW / 2, wy + 6);
+    ctx.lineTo(wx + winW / 2, wy + winH - 6);
+    ctx.moveTo(wx + 6,        wy + winH / 2);
+    ctx.lineTo(wx + winW - 6, wy + winH / 2);
+    ctx.stroke();
+
+    // Moon disc
+    const mx = wx + winW / 2;
+    const my = wy + winH / 2;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(wx + 6, wy + 6, winW - 12, winH - 12);
+    ctx.clip();
+
+    ctx.beginPath();
+    ctx.arc(mx, my, 28, 0, Math.PI * 2);
+    ctx.fillStyle = '#dddbc8';
+    ctx.fill();
+
+    // Phase shadow — offset based on currentPhase
+    // phase 0=new(dark), 0.5=full(bright), 1=new again
+    const shadowOffset = (currentPhase - 0.5) * 56;
+    ctx.beginPath();
+    ctx.arc(mx + shadowOffset, my, 28, 0, Math.PI * 2);
+    ctx.fillStyle = '#03030a';
+    ctx.fill();
+
+    ctx.restore();
+
+    // Subtle inner glow on frame edge
+    ctx.strokeStyle = 'rgba(100, 90, 60, 0.3)';
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(wx + 6, wy + 6, winW - 12, winH - 12);
+}
+
+// ─── ISOMETRIC CYLINDER (music box) ─────────────────────────────────────────
+function drawMusicBox(p, lInt, isAuditioningThisTrack) {
+    ctx.save();
+    ctx.translate(p.x, p.y);
+
+    // 1. Radiant glow
+    if (lInt > 0 || isAuditioningThisTrack) {
+        const glowScalar = isAuditioningThisTrack ? 1.0 : lInt;
+        const grad = ctx.createRadialGradient(0, 0, p.length * 0.2, 0, 0, p.length * 2.2);
+        grad.addColorStop(0, `rgba(255,255,255,${(glowScalar * 0.08).toFixed(3)})`);
+        grad.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.beginPath(); ctx.arc(0, 0, p.length * 2.2, 0, Math.PI * 2);
+        ctx.fillStyle = grad; ctx.fill();
+    }
+
+    // 2. Isometric base plate
+    const b1 = isoProject(-30,-20,0), b2 = isoProject(30,-20,0), b3 = isoProject(30,20,0), b4 = isoProject(-30,20,0);
+    ctx.beginPath();
+    ctx.moveTo(b1.x,b1.y); ctx.lineTo(b2.x,b2.y); ctx.lineTo(b3.x,b3.y); ctx.lineTo(b4.x,b4.y);
+    ctx.fillStyle   = '#1c1e22';
+    ctx.fill();
+    ctx.strokeStyle = p.active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)';
+    ctx.lineWidth   = 1;
+    ctx.stroke();
+
+    // 3. Cylinder facets
+    const segments = 12;
+    for (let i = 0; i < segments / 2; i++) {
+        const a1 = (i / segments) * Math.PI * 2 - Math.PI / 2;
+        const a2 = ((i+1) / segments) * Math.PI * 2 - Math.PI / 2;
+        const pL1 = isoProject(-25, Math.cos(a1)*p.rad, Math.sin(a1)*p.rad + p.rad);
+        const pL2 = isoProject(-25, Math.cos(a2)*p.rad, Math.sin(a2)*p.rad + p.rad);
+        const pR1 = isoProject( 25, Math.cos(a1)*p.rad, Math.sin(a1)*p.rad + p.rad);
+        const pR2 = isoProject( 25, Math.cos(a2)*p.rad, Math.sin(a2)*p.rad + p.rad);
+
+        ctx.beginPath();
+        ctx.moveTo(pL1.x,pL1.y); ctx.lineTo(pL2.x,pL2.y); ctx.lineTo(pR2.x,pR2.y); ctx.lineTo(pR1.x,pR1.y);
+        const shade = Math.floor(35 + Math.sin(a1) * 15);
+        ctx.fillStyle = `rgb(${shade},${shade},${shade+5})`;
+        ctx.fill();
+
+        // Pins
+        if ((lInt > 0.1 || isAuditioningThisTrack) && i % 2 === 0) {
+            ctx.fillStyle = p.color;
+            const px  = -25 + 8 + ((i * 5 + p.rotation * 12) % 34);
+            const pin = isoProject(px, Math.cos(a1)*p.rad, Math.sin(a1)*p.rad + p.rad);
+            ctx.beginPath(); ctx.arc(pin.x, pin.y, 1, 0, Math.PI * 2); ctx.fill();
+        }
+    }
+
+    // 4. Rotating end crank
+    const endPt = isoProject(25, 0, p.rad);
+    ctx.save();
+    ctx.translate(endPt.x, endPt.y);
+    ctx.strokeStyle = '#5d646f'; ctx.lineWidth = 2;
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(6,2); ctx.stroke();
+    ctx.translate(6, 2);
+    const armX = Math.cos(p.rotation) * 10, armY = Math.sin(p.rotation) * 5;
+    ctx.strokeStyle = '#9ca5b4';
+    ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(armX,armY); ctx.stroke();
+    ctx.fillStyle = p.color;
+    ctx.beginPath(); ctx.ellipse(armX, armY, 2, 1, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
+
+    ctx.restore();
+}
+
+// ─── MAIN ANIMATION LOOP ─────────────────────────────────────────────────────
 function advanceCelestialPhysics() {
-    // Smoothed Barycentric ambient base color shift transition calculations
+
+    // Smooth background color transition
     currentBackgroundColor.r += (currentTargetColor.r - currentBackgroundColor.r) * 0.04;
     currentBackgroundColor.g += (currentTargetColor.g - currentBackgroundColor.g) * 0.04;
     currentBackgroundColor.b += (currentTargetColor.b - currentBackgroundColor.b) * 0.04;
-    
-    // Reset canvas frame buffer with specific alpha clear value to establish motion blur tail footprint.
-    ctx.fillStyle = `rgba(${Math.round(currentBackgroundColor.r)}, ${Math.round(currentBackgroundColor.g)}, ${Math.round(currentBackgroundColor.b)}, 0.42)`;
+
+    // Motion-blur clear (low alpha = long trail)
+    ctx.fillStyle = `rgba(${Math.round(currentBackgroundColor.r)},${Math.round(currentBackgroundColor.g)},${Math.round(currentBackgroundColor.b)},0.15)`;
     ctx.fillRect(0, 0, canvas.width, canvas.height);
 
-    const centerX = canvas.width / 2; const centerY = canvas.height / 2;
-    let activeMusicBoxesCount = 0; let distSum = 0;
-    
-    // Visual tracking override definition (e.g., during isolated audition)
-    let targetP = musicBoxes.find(p => p.id === activeTargetMusicBoxId) || musicBoxes[0];
+    // ── Draw lamp and window into scene ──
+    drawLamp();
+    drawWindow();
+
+    // ── Music boxes ──
+    const centerX = canvas.width / 2, centerY = canvas.height / 2;
 
     musicBoxes.forEach(p => {
-        const dx = p.x - centerX; const dy = p.y - centerY;
-        const d = Math.sqrt(dx*dx + dy*dy);
-        
-        // Establish activation zone: check distance from central influence center
-        if (d < moon.attractionRadius) { p.active = true; activeMusicBoxesCount++; distSum += d; } 
-        else { p.active = false; }
+        const dx = p.x - centerX, dy = p.y - centerY;
+        p.active = Math.sqrt(dx*dx + dy*dy) < moon.attractionRadius;
 
         const fDist = Math.sqrt((p.x - moon.x)**2 + (p.y - moon.y)**2);
-        
-        // Define dynamic lighting glow rangezone (220px maximum range)
-        const lInt = Math.max(0, 1 - (fDist / 220));
-
-        // Define kinetic conditions: trigger the mechanical rotational graphics if a) Firefly is close, or b) This specific track audition Part is explicitly running.
+        const lInt  = Math.max(0, 1 - (fDist / 220));
         const isAuditioningThisTrack = (p.id === 1 && isPlayingOrig1) || (p.id === 2 && isPlayingOrig2) || (p.id === 3 && isPlayingOrig3);
-        
+
         if ((lInt > 0 || isAuditioningThisTrack) && (isPlayingGenerative || isAuditioningThisTrack)) {
-            // Apply a speed scalar relative to light intensity, unless in forced audition mode.
             const motionMultiplier = isAuditioningThisTrack ? 1.0 : lInt;
             p.rotation += (Tone.Transport.bpm.value / 60) * 0.035 * motionMultiplier;
         }
 
-        // --- DRAW ISOMETRIC HORIZONTAL CYLINDER GRAPHICS CHASSIS ---
-        ctx.save(); ctx.translate(p.x, p.y);
-        
-        // 1. DYNAMIC RADIANT GLOW: Soft fased radial gradient field illumination
-        if (lInt > 0 || isAuditioningThisTrack) {
-            const glowScalar = isAuditioningThisTrack ? 1.0 : lInt;
-            let grad = ctx.createRadialGradient(0, 0, p.length * 0.2, 0, 0, p.length * 2.2);
-            grad.addColorStop(0, `rgba(255,255,255,${glowScalar * 0.08})`);
-            grad.addColorStop(1, 'rgba(0,0,0,0)');
-            ctx.beginPath(); ctx.arc(0, 0, p.length * 2.2, 0, Math.PI * 2); ctx.fillStyle = grad; ctx.fill();
-        }
-
-        // 2. ISOMETRIC BASE PLATE STRUCTURAL LAYOUT
-        const b1 = isoProject(-30, -20, 0), b2 = isoProject(30, -20, 0), b3 = isoProject(30, 20, 0), b4 = isoProject(-30, 20, 0);
-        ctx.beginPath(); ctx.moveTo(b1.x, b1.y); ctx.lineTo(b2.x, b2.y); ctx.lineTo(b3.x, b3.y); ctx.lineTo(b4.x, b4.y);
-        ctx.fillStyle = '#1c1e22'; ctx.fill();
-        ctx.strokeStyle = p.active ? 'rgba(255,255,255,0.1)' : 'rgba(255,255,255,0.03)'; ctx.stroke();
-
-        // 3. HORIZONTAL ISOMETRIC CYLINDER EXTRUSION FACETS Face Mapping: Extrude segmented rings left-to-right
-        const segments = 12;
-        for (let i = 0; i < segments / 2; i++) {
-            // Project profile points oblique to isometric grid planes
-            let a1 = (i / segments) * Math.PI * 2 - Math.PI/2, a2 = ((i + 1) / segments) * Math.PI * 2 - Math.PI/2;
-            let pL1 = isoProject(-25, Math.cos(a1)*p.rad, Math.sin(a1)*p.rad + p.rad);
-            let pL2 = isoProject(-25, Math.cos(a2)*p.rad, Math.sin(a2)*p.rad + p.rad);
-            let pR1 = isoProject(25, Math.cos(a1)*p.rad, Math.sin(a1)*p.rad + p.rad);
-            let pR2 = isoProject(25, Math.cos(a2)*p.rad, Math.sin(a2)*p.rad + p.rad);
-            
-            // Render surface facets with matte color grading to simulate circular 3D metal curve depth shading.
-            ctx.beginPath(); ctx.moveTo(pL1.x, pL1.y); ctx.lineTo(pL2.x, pL2.y); ctx.lineTo(pR2.x, pR2.y); ctx.lineTo(pR1.x, pR1.y);
-            let color = Math.floor(35 + Math.sin(a1) * 15); ctx.fillStyle = `rgb(${color},${color},${color+5})`; ctx.fill();
-
-            // Render scrolling kinetic music box pins (If activated via proximity or play)
-            if ((lInt > 0.1 || isAuditioningThisTrack) && i % 2 === 0) {
-                ctx.fillStyle = p.color;
-                // Shift visual coordinates relative to current rotational cycle position mapping data.
-                let px = -25 + 8 + ((i * 5 + p.rotation * 12) % 34);
-                let pin = isoProject(px, Math.cos(a1)*p.rad, Math.sin(a1)*p.rad + p.rad);
-                ctx.beginPath(); ctx.arc(pin.x, pin.y, 1, 0, Math.PI*2); ctx.fill();
-            }
-        }
-
-        // 4. MECHANICAL ROTATING END CRANK 3D ASSEMBLY: projecting crank vectors
-        let end = isoProject(25, 0, p.rad);
-        ctx.save(); ctx.translate(end.x, end.y);
-        
-        // Extruded mechanical central drive rod line
-        ctx.strokeStyle = '#5d646f'; ctx.lineWidth = 2; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(6, 2); ctx.stroke();
-        
-        // Turning Crank Arm Lever Link (Spins geometrically flat oblique to simulate oblique angle perspective maps)
-        ctx.translate(6, 2);
-        let armX = Math.cos(p.rotation) * 10, armY = Math.sin(p.rotation) * 5;
-        ctx.strokeStyle = '#9ca5b4'; ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(armX, armY); ctx.stroke();
-        
-        // Color-popped tactile handle peg visualization on link tip
-        ctx.fillStyle = p.color; ctx.beginPath(); ctx.ellipse(armX, armY, 2, 1, 0, 0, Math.PI*2); ctx.fill();
-        
-        ctx.restore();
-        ctx.restore();
+        drawMusicBox(p, lInt, isAuditioningThisTrack);
     });
 
-    // *** DECOUPLED AUTOMATED FIREFLY KINETICS MODEL ***
-    // (Barycentric Influence Navigator)
+    // ── Firefly physics ──
     if (isSystemLocked) {
         const pull = 0.54, friction = 0.94;
-        
-        // Force 1: Calculate visual "Gravity" force pull towards active tracking pointer target (A, B, or C)
+        const targetP = musicBoxes.find(p => p.id === activeTargetMusicBoxId) || musicBoxes[0];
+
         const tDx = targetP.x - moon.x, tDy = targetP.y - moon.y;
-        const tD = Math.sqrt(tDx*tDx + tDy*tDy);
+        const tD  = Math.sqrt(tDx*tDx + tDy*tDy);
         if (tD > 10) { moon.vx += (tDx/tD) * pull; moon.vy += (tDy/tD) * pull; }
-        
-        // Force 2: Soft "Centripetal" pull towards influence center to constrain orbit
+
         const cDx = centerX - moon.x, cDy = centerY - moon.y, cD = Math.sqrt(cDx*cDx + cDy*cDy);
         if (cD > 10) { moon.vx += (cDx/cD) * 0.12; moon.vy += (cDy/cD) * 0.12; }
-        
-        // Force 3: Apply dynamic organic wiggle turbulence (Tremor simulation data factor)
+
         moon.vx += (Math.random()-0.5)*0.5; moon.vx *= friction; moon.vy *= friction;
-        
-        moon.x += moon.vx; moon.y += moon.vy;
+        moon.x  += moon.vx; moon.y += moon.vy;
     }
 
-
-    // --- RENDER DYNAMIC LIQUID LIGHT FIELD FIREFLY CORE ---
-    // (High-Intensity illumination source)
-    let glow = ctx.createRadialGradient(moon.x, moon.y, 0, moon.x, moon.y, 44);
-    glow.addColorStop(0, '#ffffff'); glow.addColorStop(0.15, 'rgba(238,255,204,0.9)');
-    glow.addColorStop(1, 'rgba(0,0,0,0)');
+    // ── Firefly render ──
+    const glow = ctx.createRadialGradient(moon.x, moon.y, 0, moon.x, moon.y, 44);
+    glow.addColorStop(0,    '#ffffff');
+    glow.addColorStop(0.15, 'rgba(238,255,204,0.9)');
+    glow.addColorStop(1,    'rgba(0,0,0,0)');
     ctx.beginPath(); ctx.arc(moon.x, moon.y, 44, 0, Math.PI*2); ctx.fillStyle = glow; ctx.fill();
-    
-    // Core white hot point factor
     ctx.beginPath(); ctx.arc(moon.x, moon.y, moon.radius, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.fill();
 
-    // Advance physics/mixing weights relative to visual data, execute standard frame loop recursion.
     processAutomatedBarycentricInfluence();
     requestAnimationFrame(advanceCelestialPhysics);
 }
 
-// User Control Input & Drag and Drop Interaction Event Listeners for HTML Canvas
+
+/* =========================================================================
+   # 12. Input / Resize Events
+   ========================================================================= */
+
 canvas.addEventListener('mousedown', (e) => {
-    // Detect mouse-hit intersections on 3D visualization objects (Hitbox detection factor analysis)
-    const clicked = musicBoxes.find(p => Math.sqrt((p.x - e.clientX)**2 + (p.y - e.clientY)**2) < 36);
-    if (clicked) draggedMusicBox = clicked; // Activate Drag Override mode
-    // Direct visual firefly navigation point override (Manual movement factor)
+    const clicked = musicBoxes.find(p => Math.sqrt((p.x-e.clientX)**2 + (p.y-e.clientY)**2) < 36);
+    if (clicked) draggedMusicBox = clicked;
     else if (!isSystemLocked) { moon.x = e.clientX; moon.y = e.clientY; moon.vx = 0; moon.vy = 0; }
 });
 window.addEventListener('mousemove', (e) => {
-    // If holding a 3D visual chassis, shift its location coordinates based on current visual location matrix pointers data.
     if (draggedMusicBox) { draggedMusicBox.x = e.clientX; draggedMusicBox.y = e.clientY; }
-    // If automation unlocked, manual drag moves automated firefly position factors data.
     else if (!isSystemLocked && e.buttons === 1) { moon.x = e.clientX; moon.y = e.clientY; }
 });
-window.addEventListener('mouseup', () => draggedMusicBox = null); // Disable Drag Override Matrix logic.
-
-// Interaction binding utility: Ensures canvas geometry data remains coherent during window scaling matrix shifts.
+window.addEventListener('mouseup', () => draggedMusicBox = null);
 window.addEventListener('resize', initCelestialLayout);
-
-// Standard application deployment & frame loop booting protocol.
-initCelestialLayout();
-requestAnimationFrame(advanceCelestialPhysics);
 
 
 /* =========================================================================
-   # 12. System Boot & Key Selector
+   # 13. Boot
    ========================================================================= */
 
-// KEY SELECTOR: only active in manual mode — value is the month index (0-11)
 const keySelector = document.getElementById('key-selector');
 if (keySelector) {
     keySelector.addEventListener('change', async (e) => {
-        if (isSystemLocked) {
-            // Snap back — don't allow changes while locked
-            keySelector.value = _lastBootedMonthIndex;
-            return;
-        }
-        await applyMonth(parseInt(e.target.value), true); // force rebuild on manual change
+        if (isSystemLocked) { keySelector.value = _lastBootedMonthIndex; return; }
+        await applyMonth(parseInt(e.target.value), true);
     });
 }
 
 async function boot() {
-    statusText.innerText = "Calibrating Harmonic Engine...";
+    statusText.innerText   = "Calibrating Harmonic Engine...";
     statusText.style.color = "";
     try {
         setupAudioEngine();
-        // Boot always uses the real current month
         await applyMonth(new Date().getMonth(), true);
         updateCelestialParameters(false);
     } catch(e) {
-        statusText.innerText = "ERROR: " + e.message;
+        statusText.innerText   = "ERROR: " + e.message;
         statusText.style.color = "#ff3b30";
         console.error(e);
     }
 }
 
+initCelestialLayout();
+requestAnimationFrame(advanceCelestialPhysics);
 boot();
