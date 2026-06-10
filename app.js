@@ -544,7 +544,7 @@ if (w3Slider) w3Slider.addEventListener('input', handleManualWeightMixUpdate);
 const canvas = document.getElementById('art-surface');
 const ctx    = canvas.getContext('2d');
 
-let moon = { x: window.innerWidth / 2, y: window.innerHeight / 2, vx: 2, vy: -1.5, radius: 3, attractionRadius: 400 };
+let moon = { x: window.innerWidth / 2, y: window.innerHeight * 0.75, vx: 2, vy: -1.5, radius: 3, attractionRadius: 400 };
 
 let musicBoxes = [
     { id: 1, x: 0, y: 0, rad: 16, length: 50, rotation: 0, color: "#ff3b30", active: true },
@@ -561,13 +561,14 @@ function initCelestialLayout() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    musicBoxes[0].x = canvas.width / 2;      musicBoxes[0].y = canvas.height * 0.30;
-    musicBoxes[1].x = canvas.width * 0.28;   musicBoxes[1].y = canvas.height * 0.65;
-    musicBoxes[2].x = canvas.width * 0.72;   musicBoxes[2].y = canvas.height * 0.65;
+    // Caixas no terço inferior (chão do quarto)
+    musicBoxes[0].x = canvas.width / 2;      musicBoxes[0].y = canvas.height * 0.72;
+    musicBoxes[1].x = canvas.width * 0.25;   musicBoxes[1].y = canvas.height * 0.78;
+    musicBoxes[2].x = canvas.width * 0.75;   musicBoxes[2].y = canvas.height * 0.78;
 
-    // Lamp hangs from center-top
-    lampPos.x = canvas.width / 2;
-    lampPos.y = 90;
+    // Candeeiro de chão — lado esquerdo, base no fundo
+    lampPos.x = canvas.width * 0.12;
+    lampPos.y = canvas.height * 0.55;   // centro da haste; base fica mais abaixo
 
     if (isSystemLocked) {
         weights = { w1: 0.33, w2: 0.33, w3: 0.33 };
@@ -584,106 +585,114 @@ function isoProject(x, y, z) {
     };
 }
 
-// ─── LAMP DRAWING ────────────────────────────────────────────────────────────
+// ─── CANDEEIRO DE CHÃO ───────────────────────────────────────────────────────
 function drawLamp() {
-    const lx = lampPos.x;
-    const ly = lampPos.y;
+    const lx   = lampPos.x;
+    const base = canvas.height - 30;   // base no chão
+    const head = lampPos.y;            // onde está o abajur
 
-    // Wire from ceiling
-    ctx.strokeStyle = 'rgba(160, 140, 100, 0.5)';
-    ctx.lineWidth   = 1.5;
+    // Haste vertical
+    ctx.strokeStyle = 'rgba(160, 140, 100, 0.55)';
+    ctx.lineWidth   = 3;
     ctx.beginPath();
-    ctx.moveTo(lx, 0);
-    ctx.lineTo(lx, ly - 16);
+    ctx.moveTo(lx, base);
+    ctx.lineTo(lx, head + 14);
     ctx.stroke();
 
-    // Shade (trapezoid)
+    // Base do candeeiro (pequeno arco/pé)
+    ctx.strokeStyle = 'rgba(160, 140, 100, 0.4)';
+    ctx.lineWidth   = 3;
     ctx.beginPath();
-    ctx.moveTo(lx - 22, ly - 16);
-    ctx.lineTo(lx + 22, ly - 16);
-    ctx.lineTo(lx + 14, ly + 10);
-    ctx.lineTo(lx - 14, ly + 10);
+    ctx.moveTo(lx - 18, base);
+    ctx.lineTo(lx + 18, base);
+    ctx.stroke();
+
+    // Braço curvo para o abajur
+    ctx.strokeStyle = 'rgba(160, 140, 100, 0.45)';
+    ctx.lineWidth   = 2.5;
+    ctx.beginPath();
+    ctx.moveTo(lx, head + 14);
+    ctx.quadraticCurveTo(lx + 28, head + 8, lx + 38, head - 10);
+    ctx.stroke();
+
+    // Abajur (trapezóide) centrado no fim do braço
+    const ax = lx + 38, ay = head - 10;
+    ctx.beginPath();
+    ctx.moveTo(ax - 24, ay - 12);
+    ctx.lineTo(ax + 24, ay - 12);
+    ctx.lineTo(ax + 16, ay + 14);
+    ctx.lineTo(ax - 16, ay + 14);
     ctx.closePath();
-    ctx.fillStyle   = 'rgba(210, 185, 120, 0.18)';
-    ctx.strokeStyle = 'rgba(210, 185, 120, 0.45)';
+    ctx.fillStyle   = 'rgba(210, 185, 120, 0.20)';
+    ctx.strokeStyle = 'rgba(210, 185, 120, 0.50)';
     ctx.lineWidth   = 1;
     ctx.fill();
     ctx.stroke();
 
-    // Bulb glow point
+    // Ponto de luz (bulbo)
     ctx.beginPath();
-    ctx.arc(lx, ly + 10, 3.5, 0, Math.PI * 2);
+    ctx.arc(ax, ay + 14, 4, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 245, 190, 0.95)';
     ctx.fill();
 
-    // Wide cone of light cast downward
-    const coneH   = canvas.height * 0.85;
-    const coneW   = canvas.height * 0.70;
-    const coneGrad = ctx.createRadialGradient(lx, ly + 10, 0, lx, ly + 10, coneH);
-    coneGrad.addColorStop(0,    'rgba(255, 240, 180, 0.10)');
-    coneGrad.addColorStop(0.45, 'rgba(255, 230, 150, 0.04)');
+    // Cone de luz — emana do bulbo para a direita e para baixo
+    const bx = ax, by = ay + 14;
+    const coneH    = canvas.height * 0.80;
+    const coneW    = canvas.height * 0.65;
+    const coneGrad = ctx.createRadialGradient(bx, by, 0, bx, by, coneH);
+    coneGrad.addColorStop(0,    'rgba(255, 240, 180, 0.11)');
+    coneGrad.addColorStop(0.40, 'rgba(255, 230, 150, 0.045)');
     coneGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
     ctx.beginPath();
-    ctx.moveTo(lx,            ly + 10);
-    ctx.lineTo(lx - coneW,    canvas.height);
-    ctx.lineTo(lx + coneW,    canvas.height);
+    ctx.moveTo(bx, by);
+    ctx.lineTo(bx - coneW * 0.4, canvas.height);
+    ctx.lineTo(bx + coneW,       canvas.height);
     ctx.closePath();
     ctx.fillStyle = coneGrad;
     ctx.fill();
 }
 
-// ─── WINDOW WITH MOON ────────────────────────────────────────────────────────
+// ─── JANELA COM LUA (parede do topo) ─────────────────────────────────────────
 function drawWindow() {
-    const winW = 220, winH = 220;
+    const winW = 200, winH = 200;
     const wx   = canvas.width / 2 - winW / 2;
-    const wy   = canvas.height - winH - 40;   // bottom of scene, like a wall window
+    const wy   = 20;   // topo da cena
 
-    // Outer frame
-    ctx.strokeStyle = 'rgba(60, 55, 45, 0.8)';
-    ctx.lineWidth   = 12;
+    // Fundo (céu noturno)
+    ctx.fillStyle = '#03030a';
+    ctx.fillRect(wx, wy, winW, winH);
+
+    // Moldura exterior
+    ctx.strokeStyle = 'rgba(70, 62, 48, 0.85)';
+    ctx.lineWidth   = 10;
     ctx.strokeRect(wx, wy, winW, winH);
 
-    // Night sky fill
-    ctx.fillStyle = '#03030a';
-    ctx.fillRect(wx + 6, wy + 6, winW - 12, winH - 12);
+    // Brilho interior suave da moldura
+    ctx.strokeStyle = 'rgba(110, 95, 65, 0.25)';
+    ctx.lineWidth   = 2;
+    ctx.strokeRect(wx + 5, wy + 5, winW - 10, winH - 10);
 
-    // Cross divider
-    ctx.strokeStyle = 'rgba(60, 55, 45, 0.8)';
-    ctx.lineWidth   = 6;
-    ctx.beginPath();
-    ctx.moveTo(wx + winW / 2, wy + 6);
-    ctx.lineTo(wx + winW / 2, wy + winH - 6);
-    ctx.moveTo(wx + 6,        wy + winH / 2);
-    ctx.lineTo(wx + winW - 6, wy + winH / 2);
-    ctx.stroke();
-
-    // Moon disc
+    // Lua
     const mx = wx + winW / 2;
     const my = wy + winH / 2;
     ctx.save();
     ctx.beginPath();
-    ctx.rect(wx + 6, wy + 6, winW - 12, winH - 12);
+    ctx.rect(wx + 2, wy + 2, winW - 4, winH - 4);
     ctx.clip();
 
     ctx.beginPath();
-    ctx.arc(mx, my, 28, 0, Math.PI * 2);
+    ctx.arc(mx, my, 32, 0, Math.PI * 2);
     ctx.fillStyle = '#dddbc8';
     ctx.fill();
 
-    // Phase shadow — offset based on currentPhase
-    // phase 0=new(dark), 0.5=full(bright), 1=new again
-    const shadowOffset = (currentPhase - 0.5) * 56;
+    // Sombra de fase — offset horizontal baseado em currentPhase
+    const shadowOffset = (currentPhase - 0.5) * 64;
     ctx.beginPath();
-    ctx.arc(mx + shadowOffset, my, 28, 0, Math.PI * 2);
+    ctx.arc(mx + shadowOffset, my, 32, 0, Math.PI * 2);
     ctx.fillStyle = '#03030a';
     ctx.fill();
 
     ctx.restore();
-
-    // Subtle inner glow on frame edge
-    ctx.strokeStyle = 'rgba(100, 90, 60, 0.3)';
-    ctx.lineWidth   = 2;
-    ctx.strokeRect(wx + 6, wy + 6, winW - 12, winH - 12);
 }
 
 // ─── ISOMETRIC CYLINDER (music box) ─────────────────────────────────────────
@@ -777,11 +786,15 @@ function advanceCelestialPhysics() {
         p.active = Math.sqrt(dx*dx + dy*dy) < moon.attractionRadius;
 
         const fDist = Math.sqrt((p.x - moon.x)**2 + (p.y - moon.y)**2);
-        const lInt  = Math.max(0, 1 - (fDist / 220));
+        // Raio aumentado para 350px para alcançar todas as caixas
+        const lInt  = Math.max(0, 1 - (fDist / 350));
         const isAuditioningThisTrack = (p.id === 1 && isPlayingOrig1) || (p.id === 2 && isPlayingOrig2) || (p.id === 3 && isPlayingOrig3);
 
-        if ((lInt > 0 || isAuditioningThisTrack) && (isPlayingGenerative || isAuditioningThisTrack)) {
-            const motionMultiplier = isAuditioningThisTrack ? 1.0 : lInt;
+        // Rotação sempre ativa — proporcional à proximidade do pirilampo,
+        // ou a 100% quando em audição isolada.
+        // Não depende de isPlayingGenerative para que as caixas girem sempre.
+        const motionMultiplier = isAuditioningThisTrack ? 1.0 : lInt;
+        if (motionMultiplier > 0) {
             p.rotation += (Tone.Transport.bpm.value / 60) * 0.035 * motionMultiplier;
         }
 
