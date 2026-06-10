@@ -1,5 +1,6 @@
 /* =========================================================================
-   # 1. Global App Playback & Audio States
+   # 1. Global App State
+   # Core audio playback, track control, and application state shared across the system.
    ========================================================================= */
 
 let polyChordSynth, expressiveMelodySynth, delay, reverb, timbreFilter, masterLimiter, distortion;
@@ -28,7 +29,8 @@ let currentPhase = 0;
 
 
 /* =========================================================================
-   # 2. DOM Selectors & UI Data Mappings
+   # 2. DOM Selectors & UI Bindings
+   # Connect HTML interface elements to their JavaScript controls and display nodes.
    ========================================================================= */
 
 const statusText      = document.getElementById('status-text');
@@ -53,6 +55,7 @@ const w3Slider = document.getElementById('w3-slider'), w3Val = document.getEleme
 
 /* =========================================================================
    # 3. Audio Visualization Dynamics
+   # Map audio state into visual color, timing, and display updates for the UI.
    ========================================================================= */
 
 const pitchColorMap = {
@@ -73,7 +76,8 @@ const getDurationTag = (dur) => {
 
 
 /* =========================================================================
-   # 4. HARMONIC NORMALIZATION ENGINE
+   # 4. Harmonic Normalization Engine
+   # Detects key and mode, then computes transposition shifts to align MIDI tracks.
    ========================================================================= */
 
 const NOTE_NAMES = ["C","C#","D","D#","E","F","F#","G","G#","A","A#","B"];
@@ -114,7 +118,8 @@ function computeShift(detected, targetMajorRoot, targetMinorRoot) {
 
 
 /* =========================================================================
-   # 5. MIDI Feature Extraction & Feature Splitting Engine
+   # 5. MIDI Feature Extraction & Markov Builder
+   # Parse MIDI and build harmonic/melodic state machines for generative playback.
    ========================================================================= */
 
 async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceContainer, targetMajorRoot, targetMinorRoot, keyDisplayId) {
@@ -192,7 +197,8 @@ async function analyzeMidiPerformance(url, harmonyBrain, melodyBrain, sequenceCo
 
 
 /* =========================================================================
-   # 6. CELESTIAL ENGINE
+   # 6. Celestial Phase Engine
+   # Compute moon phase values, map them to audio parameters, and update UI labels.
    ========================================================================= */
 
 function mapValue(value, inMin, inMax, outMin, outMax) {
@@ -291,6 +297,7 @@ async function applyMonth(monthIndex, force = false) {
 
 /* =========================================================================
    # 7. Audio Pipeline Configuration
+   # Initialize the Web Audio synthesis engine, effects chain, and tone routing.
    ========================================================================= */
 
 function setupAudioEngine() {
@@ -316,6 +323,7 @@ function setupAudioEngine() {
 
 /* =========================================================================
    # 8. Generative Music Logic
+   # Manage influence weights, probabilistic transitions, and generative note selection.
    ========================================================================= */
 
 function processAutomatedBarycentricInfluence() {
@@ -395,6 +403,7 @@ function triggerMelodyGeneration(time) {
 
 /* =========================================================================
    # 9. Audition Playback Engine
+   # Play back isolated MIDI audition tracks and manage overall playback cleanup.
    ========================================================================= */
 
 function buildTonePartFromContainer(containerData) {
@@ -435,6 +444,7 @@ function clearAllPlaybacks() {
 
 /* =========================================================================
    # 10. User Interaction & Control Handlers
+   # Attach UI controls and button behavior for play, lock, and audition interaction.
    ========================================================================= */
 
 if (playBtn) playBtn.addEventListener('click', async () => {
@@ -540,7 +550,8 @@ if (w3Slider) w3Slider.addEventListener('input', handleManualWeightMixUpdate);
 
 
 /* =========================================================================
-   # 11. CANVAS RENDERING ENGINE
+   # 11. Canvas Rendering Engine
+   # Render the lamp, moon window, music boxes, firefly, and overall scene animation.
    ========================================================================= */
 
 const canvas = document.getElementById('art-surface');
@@ -565,14 +576,14 @@ function initCelestialLayout() {
     canvas.width  = window.innerWidth;
     canvas.height = window.innerHeight;
 
-    // Caixas no terço inferior (chão do quarto)
+    // Place the boxes on the lower third of the room floor
     musicBoxes[0].x = canvas.width / 2;      musicBoxes[0].y = canvas.height * 0.72;
     musicBoxes[1].x = canvas.width * 0.25;   musicBoxes[1].y = canvas.height * 0.78;
     musicBoxes[2].x = canvas.width * 0.75;   musicBoxes[2].y = canvas.height * 0.78;
 
-    // Candeeiro de chão — lado esquerdo, mais alto
+    // Floor lamp on the left side, positioned higher than the boxes
     lampPos.x = canvas.width * 0.12;
-    lampPos.y = canvas.height * 0.38;   // mais alto = candeeiro mais alto
+    lampPos.y = canvas.height * 0.38;   // higher value places the lamp higher on the canvas
 
     if (isSystemLocked) {
         weights = { w1: 0.33, w2: 0.33, w3: 0.33 };
@@ -589,11 +600,11 @@ function isoProject(x, y, z) {
     };
 }
 
-// ─── CANDEEIRO DE CHÃO ───────────────────────────────────────────────────────
+// ─── FLOOR LAMP ───────────────────────────────────────────────────────────
 function drawLamp() {
     const lx   = lampPos.x;
     const base = canvas.height - 30;
-    const head = lampPos.y;   // topo da haste / centro do abajur
+    const head = lampPos.y;   // top of the pole / centre of the lampshade
 
     // Haste vertical
     ctx.strokeStyle = 'rgba(160, 140, 100, 0.55)';
@@ -603,7 +614,7 @@ function drawLamp() {
     ctx.lineTo(lx, head);
     ctx.stroke();
 
-    // Base (pé)
+    // Base of the lamp stand
     ctx.strokeStyle = 'rgba(160, 140, 100, 0.4)';
     ctx.lineWidth   = 3;
     ctx.beginPath();
@@ -611,7 +622,7 @@ function drawLamp() {
     ctx.lineTo(lx + 20, base);
     ctx.stroke();
 
-    // Braço curvo para o abajur
+    // Curved arm connecting the pole to the lampshade
     ctx.strokeStyle = 'rgba(160, 140, 100, 0.45)';
     ctx.lineWidth   = 2.5;
     ctx.beginPath();
@@ -619,14 +630,14 @@ function drawLamp() {
     ctx.quadraticCurveTo(lx + 30, head - 5, lx + 42, head - 22);
     ctx.stroke();
 
-    // Abajur invertido — lado maior em baixo (abre para baixo como um candeeiro real)
+    // Inverted lampshade with the wider edge at the bottom for a realistic lamp shape
     const ax = lx + 42, ay = head - 22;
-    // topo estreito, base larga
+    // narrow top, wide bottom
     ctx.beginPath();
     ctx.moveTo(ax - 12, ay - 14);   // topo esquerdo (estreito)
     ctx.lineTo(ax + 12, ay - 14);   // topo direito
-    ctx.lineTo(ax + 28, ay + 12);   // base direita (larga)
-    ctx.lineTo(ax - 28, ay + 12);   // base esquerda
+    ctx.lineTo(ax + 28, ay + 12);   // right base (wide)
+    ctx.lineTo(ax - 28, ay + 12);   // left base
     ctx.closePath();
     ctx.fillStyle   = 'rgba(210, 185, 120, 0.22)';
     ctx.strokeStyle = 'rgba(210, 185, 120, 0.55)';
@@ -634,21 +645,21 @@ function drawLamp() {
     ctx.fill();
     ctx.stroke();
 
-    // Ponto de luz (bulbo) na base do abajur
+    // Light source bulb at the base of the lampshade
     const bx = ax, by = ay + 12;
     ctx.beginPath();
     ctx.arc(bx, by, 4, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 245, 190, 0.95)';
     ctx.fill();
 
-    // Halo imediato do bulbo
+    // Immediate halo around the bulb
     const halo = ctx.createRadialGradient(bx, by, 0, bx, by, 30);
     halo.addColorStop(0,   'rgba(255, 245, 190, 0.18)');
     halo.addColorStop(1,   'rgba(0, 0, 0, 0)');
     ctx.beginPath(); ctx.arc(bx, by, 30, 0, Math.PI * 2);
     ctx.fillStyle = halo; ctx.fill();
 
-    // Cone de luz grande — do bulbo para baixo/direita, cobre as caixas
+    // Main light cone from the bulb down and to the right, covering the boxes
     const coneH    = canvas.height * 1.1;
     const coneW    = canvas.height * 0.90;
     const coneGrad = ctx.createRadialGradient(bx, by, 0, bx, by, coneH);
@@ -663,36 +674,36 @@ function drawLamp() {
     ctx.fillStyle = coneGrad;
     ctx.fill();
 
-    // Guardar o centro do cone para uso nos pesos
-    // O centro geométrico do cone ao nível das caixas é ~2/3 do caminho entre bx e bx+coneW
+    // Store the lamp cone center for influence-weight calculations
+    // The geometric centre at box height is roughly 2/3 of the way from bx to bx+coneW
     lampLightCenterX = bx + coneW * 0.33;
     lampLightCenterY = canvas.height * 0.75;
 }
 
-// ─── JANELA COM LUA (parede do topo) ─────────────────────────────────────────
+// ─── MOON WINDOW ───────────────────────────────────────────────────────────
 function drawWindow() {
     const winW = 460, winH = 240;
     const wx   = canvas.width / 2 - winW / 2;
     const wy   = 80;   // um pouco abaixo do título
 
-    // Fundo (céu noturno)
+    // Background sky inside the moon window
     ctx.fillStyle = '#03030a';
     ctx.fillRect(wx, wy, winW, winH);
 
-    // Moldura exterior
+    // Outer frame of the moon window
     ctx.strokeStyle = 'rgba(70, 62, 48, 0.85)';
     ctx.lineWidth   = 10;
     ctx.strokeRect(wx, wy, winW, winH);
 
-    // Brilho interior suave da moldura
+    // Soft inner glow for the frame
     ctx.strokeStyle = 'rgba(110, 95, 65, 0.25)';
     ctx.lineWidth   = 2;
     ctx.strokeRect(wx + 5, wy + 5, winW - 10, winH - 10);
 
-    // Lua — técnica de offset corrigida:
-    // phase=0 → Lua Nova (escura), phase=0.5 → Lua Cheia (clara)
-    // O offset move a sombra: (0.5 - phase) faz com que phase=0.5 → offset=0 (lua cheia visível)
-    // e phase=0 ou 1 → offset=±moonR*2 (lua coberta = lua nova)
+    // Moon phase rendering:
+    // phase=0 => New Moon (dark), phase=0.5 => Full Moon (bright)
+    // The offset moves the shadow; at phase=0.5 the shadow is off-centre, showing the full moon.
+    // At phase=0 or 1 the shadow covers the moon fully, producing New Moon.
     const moonR = 46;
     const mx = wx + winW / 2;
     const my = wy + winH / 2;
@@ -702,14 +713,14 @@ function drawWindow() {
     ctx.rect(wx + 2, wy + 2, winW - 4, winH - 4);
     ctx.clip();
 
-    // Disco lunar base iluminado (fixo)
+    // Fixed illuminated moon disc
     ctx.beginPath();
     ctx.arc(mx, my, moonR, 0, Math.PI * 2);
     ctx.fillStyle = '#dddbc8';
     ctx.fill();
 
-    // Máscara escura móvel que cria as fases:
-    // phase=0/1 => new moon (máscara centralizada, inteira); phase=0.5 => full moon (máscara fora);
+    // Moving dark mask to create the lunar phases:
+    // phase=0/1 => new moon (mask centered); phase=0.5 => full moon (mask shifted away).
     const phaseFactor = 1 - Math.abs(currentPhase - 0.5) * 2;
     const shadowShift = phaseFactor * moonR * 2;
     const shadowDirection = currentPhase < 0.5 ? -1 : 1;
@@ -814,13 +825,13 @@ function advanceCelestialPhysics() {
         p.active = Math.sqrt(dx*dx + dy*dy) < moon.attractionRadius;
 
         const fDist = Math.sqrt((p.x - moon.x)**2 + (p.y - moon.y)**2);
-        // Raio aumentado para 350px para alcançar todas as caixas
+        // Increase radius to 350px so the light influence reaches all boxes
         const lInt  = Math.max(0, 1 - (fDist / 350));
         const isAuditioningThisTrack = (p.id === 1 && isPlayingOrig1) || (p.id === 2 && isPlayingOrig2) || (p.id === 3 && isPlayingOrig3);
 
         // Rotação sempre ativa — proporcional à proximidade do pirilampo,
         // ou a 100% quando em audição isolada.
-        // Não depende de isPlayingGenerative para que as caixas girem sempre.
+        // Rotation runs continuously so boxes keep turning even when not generative.
         const motionMultiplier = isAuditioningThisTrack ? 1.0 : lInt;
         if (motionMultiplier > 0) {
             p.rotation += (Tone.Transport.bpm.value / 60) * 0.035 * motionMultiplier;
@@ -859,7 +870,8 @@ function advanceCelestialPhysics() {
 
 
 /* =========================================================================
-   # 12. Input / Resize Events
+   # 12. Input & Resize Events
+   # Handle canvas mouse interaction, dragging, and window resize updates.
    ========================================================================= */
 
 canvas.addEventListener('mousedown', (e) => {
@@ -876,7 +888,8 @@ window.addEventListener('resize', initCelestialLayout);
 
 
 /* =========================================================================
-   # 13. Boot
+   # 13. Application Boot
+   # Start the app by analyzing MIDI, setting the key, and initializing audio state.
    ========================================================================= */
 
 const keySelector = document.getElementById('key-selector');
