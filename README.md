@@ -1,4 +1,4 @@
-# Neverending Lullaby — Technical Architecture
+# Neverending Lullaby — README + Architecture
 
 **Author:** Luís Rodrigues  
 **Stack:** Vanilla JavaScript · Tone.js · @tonejs/midi · SunCalc · HTML5 Canvas
@@ -17,15 +17,15 @@ There are no samples, no loops, and no fixed score. Everything heard is synthesi
 
 ```
 ┌─────────────────────────────────────────────┐
-│              MIDI SOURCE FILES               │
-│        midi_1.mid  midi_2.mid  midi_3.mid    │
+│              MIDI SOURCE FILES              │
+│        midi_1.mid  midi_2.mid  midi_3.mid   │
 └──────────────────┬──────────────────────────┘
                    │
                    ▼
 ┌─────────────────────────────────────────────┐
-│         HARMONIC NORMALIZATION ENGINE        │
-│  K-S key detection → semitone shift          │
-│  All tracks transposed to same key space     │
+│         HARMONIC NORMALIZATION ENGINE       │
+│  K-S key detection → semitone shift         │
+│  All tracks transposed to same key space    │
 └──────────────────┬──────────────────────────┘
                    │
           ┌────────┴────────┐
@@ -38,20 +38,21 @@ There are no samples, no loops, and no fixed score. Everything heard is synthesi
          │                     │
          └──────────┬──────────┘
                     ▼
-┌─────────────────────────────────────────────┐
-│           GENERATIVE ENGINE                  │
-│  Weighted Markov traversal                   │
-│  Barycentric influence from lamp position    │
-└──────────────────┬──────────────────────────┘
-                   │
-          ┌────────┴────────┐
-          ▼                 ▼
-┌──────────────────┐  ┌──────────────────┐
-│   CELESTIAL DATA │  │   AUDIO ENGINE   │
-│   SunCalc:       │  │   Tone.js:       │
-│   Distance→BPM   │  │   Synths + FX    │
-│   Phase→Timbre   │  │   Chain          │
-└──────────────────┘  └──────────────────┘
+┌─────────────────────────────────────────────┐  ┌──────────────────┐
+│           GENERATIVE ENGINE                 │  │   CELESTIAL DATA │
+│  Weighted Markov traversal                  │  │   SunCalc:       │
+│  Barycentric influence from lamp position   │  │   Distance→BPM   │
+└─────────────────────────────────────────────┘  │   Phase→Timbre   │
+                   │                             └──────────────────┘
+                   │                                      │
+                   └───────────────┬──────────────────────┘
+                                   ▼
+                          ┌──────────────────┐
+                          │   AUDIO ENGINE   │
+                          │   Tone.js:       │
+                          │   Synths + FX    │
+                          │   Chain          │
+                          └──────────────────┘
 ```
 
 ---
@@ -451,44 +452,7 @@ The firefly's distance to each music box controls the glow intensity (lInt) of t
 
 ---
 
-## 6. Code Organization — Improvement Suggestions
-
-The current `app.js` is structured into 13 labelled sections and is clean and readable. The following improvements would make it easier to maintain and extend:
-
-**1. Dead DOM selectors**  
-`chaosSlider` and `debugText` are referenced in DOM selectors (lines 38–49) but neither element exists in the final HTML. These cause silent null references throughout. Remove them or add the corresponding HTML elements back.
-
-**2. `moon` variable naming**  
-The firefly object is still named `moon` in the rendering code. This conflicts conceptually with the actual moon drawn in `drawWindow`. Renaming it to `firefly` throughout would eliminate confusion and make the code self-documenting.
-
-**3. `styles.css` is unused**  
-All styles are defined inline in `index.html`. The `styles.css` file contains a completely different layout (flex-centred app container) from an earlier version of the project. It should either be deleted or integrated, since including an unused file that overrides or conflicts is a maintenance hazard.
-
-**4. `processAutomatedBarycentricInfluence` writes to removed sliders**  
-Lines 342–345 call `w1Slider.value`, `w2Slider.value` etc. In the current UI these sliders exist, but the function only runs when `isSystemLocked` is true — at which point the sliders are disabled. Writing to `.value` on disabled inputs is harmless, but the `debugText` write on line 345 references a null element. That line should be removed.
-
-**5. Moon position latitude/longitude**  
-`SunCalc.getMoonPosition(now, 0, 0)` uses coordinates 0°N, 0°E (Gulf of Guinea). For an installation that adapts to real astronomical data, using the viewer's actual location (via the Geolocation API) would make the data genuinely local. At minimum, the coordinates should be set to a fixed location meaningful to the work (Porto, Portugal: 41.15, -8.63) rather than the arbitrary null island.
-
-**6. Key selector value format inconsistency**  
-The HTML `<option value="0">` through `<option value="11">` correctly use plain month indices. The old README still mentions a `"maj:min|monthName"` format from an earlier iteration. The README should be updated to reflect the final implementation.
-
-**7. Split into modules**  
-At 919 lines, `app.js` is approaching the limit of comfortable single-file management. Natural module boundaries exist:
-- `midi.js` — sections 4 + 5 (key detection, MIDI analysis, Markov building)
-- `audio.js` — sections 7 + 8 + 9 (synth setup, generative engine, audition)
-- `celestial.js` — section 6 (SunCalc integration, phase mapping)
-- `render.js` — sections 11 + 12 (canvas, animation loop, input)
-- `main.js` — sections 1 + 2 + 3 + 10 + 13 (state, DOM, controls, boot)
-
-This would require either a module bundler or native ES modules (`type="module"` in the HTML script tag), both of which are straightforward to introduce.
-
-**8. `applyMonth` called inside `updateCelestialParameters`**  
-`applyMonth` is an async function that rebuilds all six Markov matrices (a relatively slow operation). `updateCelestialParameters` calls it synchronously as if it were instant. While this doesn't break anything (JavaScript's event loop handles it gracefully), it means the status display may briefly show the wrong message. Awaiting the call properly or separating the concerns would make the flow cleaner.
-
----
-
-## 7. Dependencies
+## 6. Dependencies
 
 | Library | Version | Role |
 |---|---|---|
