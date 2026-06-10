@@ -287,7 +287,9 @@ function updateCelestialParameters(isManual = false) {
         distance = SunCalc.getMoonPosition(now, 0, 0).distance;
         
         currentBpm = mapValue(distance, DIST_MIN, DIST_MAX, BPM_MAX, BPM_MIN);
-        
+
+        // Apply the current month's key (skips rebuild if month hasn't changed)
+        applyMonth(now.getMonth());
         
         console.log(`DEBUG: Distance: ${distance.toFixed(0)} km, Clamped BPM: ${currentBpm.toFixed(2)}`);
     }
@@ -311,37 +313,65 @@ function updateCelestialParameters(isManual = false) {
     if (timbreFilter) timbreFilter.frequency.rampTo(freq, 0.5);
     if (typeof distortion !== 'undefined') distortion.distortion = distortionAmount;
 
-    // --- UI UPDATES (Source of truth: the local variables calculated above) ---
-    document.getElementById('mon-phase').innerText = getMoonPhaseName(currentPhase);
-    document.getElementById('mon-dist').innerText = Math.round(distance).toLocaleString() + " km";
-    document.getElementById('mon-freq').innerText = Math.round(freq);
-    document.getElementById('mon-distort').innerText = distortionAmount.toFixed(2);
-    
-    document.getElementById('mon-bpm-label').innerText = 
-        `BPM: ${Math.round(currentBpm)} | Distance: ${Math.round(distance).toLocaleString()}km | ${isManual ? 'Manual' : 'Auto'}`;
+    // --- UI UPDATES ---
+    const elPhase   = document.getElementById('mon-phase');
+    const elFreq    = document.getElementById('mon-freq');
+    const elDistort = document.getElementById('mon-distort');
+    const elBpmLbl  = document.getElementById('mon-bpm-label');
+    if (elPhase)   elPhase.innerText   = getMoonPhaseName(currentPhase);
+    if (elFreq)    elFreq.innerText    = Math.round(freq);
+    if (elDistort) elDistort.innerText = distortionAmount.toFixed(2);
+    if (elBpmLbl)  elBpmLbl.innerText  = `BPM: ${Math.round(currentBpm)} | Distance: ${Math.round(distance).toLocaleString()} km | ${isManual ? 'Manual' : 'Auto'}`;
 }
 
-// Helper function to determine the root note index for a given month (0-11) based on your specified mapping
-function getRootNoteForMonth(monthIndex) {
-    // monthIndex is 0-11
-    // Your map: 0->9, 1->10, 2->11, 3->0, 4->1, 5->2 (June), etc.
-    const map = [9, 10, 11, 0, 1, 2, 3, 4, 5, 6, 7, 8];
-    return map[monthIndex];
-}
+// Single source of truth: month index (0=Jan) → major and minor roots
+// Follows circle of fifths: Jan=C maj/A min, Feb=G maj/E min, etc.
+const MONTH_KEYS = [
+    { name: "January",   label: "C maj / A min",   maj: 0,  min: 9  },
+    { name: "February",  label: "G maj / E min",   maj: 7,  min: 4  },
+    { name: "March",     label: "D maj / B min",   maj: 2,  min: 11 },
+    { name: "April",     label: "A maj / F# min",  maj: 9,  min: 6  },
+    { name: "May",       label: "E maj / C# min",  maj: 4,  min: 1  },
+    { name: "June",      label: "B maj / G# min",  maj: 11, min: 8  },
+    { name: "July",      label: "F# maj / D# min", maj: 6,  min: 3  },
+    { name: "August",    label: "Db maj / Bb min", maj: 1,  min: 10 },
+    { name: "September", label: "Ab maj / F min",  maj: 8,  min: 5  },
+    { name: "October",   label: "Eb maj / C min",  maj: 3,  min: 0  },
+    { name: "November",  label: "Bb maj / G min",  maj: 10, min: 7  },
+    { name: "December",  label: "F maj / D min",   maj: 5,  min: 2  },
+];
 
-async function changeKeyByMonth(month) {
-    // Use the helper function!
-    const newRoot = getRootNoteForMonth(monthIndex);
-    
-    // Clear existing brains
-    statusText.innerText = "Transposing...";
-    
-    // Re-run the analysis with the new target root
-    await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1, newRoot, (newRoot + 9) % 12, 'k1');
-    await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2, newRoot, (newRoot + 9) % 12, 'k2');
-    await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3, newRoot, (newRoot + 9) % 12, 'k3');
-    
-    statusText.innerText = "Key Updated: " + newRoot;
+// Tracks the last month index that was actually booted, to avoid redundant re-analysis
+let _lastBootedMonthIndex = -1;
+
+// THE single entry point for all key changes.
+// Rebuilds Markov matrices and syncs the key-selector UI.
+// Safe to call multiple times — skips rebuild if month hasn't changed.
+async function applyMonth(monthIndex, force = false) {
+    if (monthIndex === _lastBootedMonthIndex && !force) return;
+    _lastBootedMonthIndex = monthIndex;
+
+    const key = MONTH_KEYS[monthIndex];
+
+    // Sync the key-selector dropdown to show the current month
+    const sel = document.getElementById('key-selector');
+    if (sel) sel.value = monthIndex;
+
+    // Reset brains and containers
+    harmonyBrainA = { states: [], transitionMatrix: {} }; harmonyBrainB = { states: [], transitionMatrix: {} }; harmonyBrainC = { states: [], transitionMatrix: {} };
+    melodyBrainA  = { states: [], transitionMatrix: {} }; melodyBrainB  = { states: [], transitionMatrix: {} }; melodyBrainC  = { states: [], transitionMatrix: {} };
+    originalSequenceData1 = []; originalSequenceData2 = []; originalSequenceData3 = [];
+    ['k1','k2','k3'].forEach(id => { const el = document.getElementById(id); if (el) el.innerText = '—'; });
+
+    statusText.innerText = `Setting key: ${key.name} — ${key.label}`;
+    statusText.style.color = "";
+
+    await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1, key.maj, key.min, 'k1');
+    await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2, key.maj, key.min, 'k2');
+    await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3, key.maj, key.min, 'k3');
+
+    statusText.innerText = "Engine is Ready";
+    statusText.style.color = "#34c759";
 }
 
 
@@ -591,22 +621,17 @@ if (lockBtn) lockBtn.addEventListener('click', () => {
         lockBtn.innerText = "🔒 System Automation: LOCKED"; 
         lockBtn.classList.remove('unlocked');
         
-        // 1. Force the Auto Refresh (This calculates the correct BPM/Phase)
-        updateCelestialParameters(false);
+        // Re-read real astronomical data and apply the actual current month's key
+        _lastBootedMonthIndex = -1; // Force rebuild even if month appears unchanged
+        updateCelestialParameters(false); // this calls applyMonth(now.getMonth()) internally
         
-        // 2. DISABLE UI BEFORE SYNCING
-        // By disabling first, you prevent 'input' events from firing 
-        // while the code updates the values.
         tempoSlider.disabled = true; 
         phaseSlider.disabled = true; 
         w1.disabled = true; w2.disabled = true; w3.disabled = true;
 
-        // 3. Update sliders based on the variables already set by updateCelestialParameters
-        // Access your global variables (bpm, phase) directly
         tempoSlider.value = Math.round(currentBpm); 
         phaseSlider.value = currentPhase.toFixed(2);
 
-        // 4. Reset Music Box Layout
         initCelestialLayout();
 
     } else {
@@ -868,70 +893,32 @@ requestAnimationFrame(advanceCelestialPhysics);
    # 12. System Boot & Key Selector
    ========================================================================= */
 
-// The key selector listener
+// KEY SELECTOR: only active in manual mode — value is the month index (0-11)
 const keySelector = document.getElementById('key-selector');
 if (keySelector) {
     keySelector.addEventListener('change', async (e) => {
-        // --- ADDED SAFETY CHECK ---
         if (isSystemLocked) {
-            statusText.innerText = "LOCKED: Disable automation to change key.";
-            // Optional: You could reset the selector to a previous value here
-            return; 
+            // Snap back — don't allow changes while locked
+            keySelector.value = _lastBootedMonthIndex;
+            return;
         }
-
-        const [values, monthName] = e.target.value.split('|');
-        const [maj, min] = values.split(':').map(Number);
-        
-        // ... rest of your existing logic ...
-        harmonyBrainA = { states: [], transitionMatrix: {} }; // ... etc
-        clearAllPlaybacks();
-        await boot(maj, min);
-        statusText.innerText = `Key Set: ${monthName}`;
+        await applyMonth(parseInt(e.target.value), true); // force rebuild on manual change
     });
 }
 
-async function boot(targetMajorRoot = 0, targetMinorRoot = 9) {
+async function boot() {
     statusText.innerText = "Calibrating Harmonic Engine...";
     statusText.style.color = "";
     try {
-        // 1. Setup the audio nodes first
-        setupAudioEngine(); 
-
-        // 2. Perform analysis
-        await analyzeMidiPerformance("midi_1.mid", harmonyBrainA, melodyBrainA, originalSequenceData1, targetMajorRoot, targetMinorRoot, 'k1');
-        await analyzeMidiPerformance("midi_2.mid", harmonyBrainB, melodyBrainB, originalSequenceData2, targetMajorRoot, targetMinorRoot, 'k2');
-        await analyzeMidiPerformance("midi_3.mid", harmonyBrainC, melodyBrainC, originalSequenceData3, targetMajorRoot, targetMinorRoot, 'k3');
-        
-        // 3. Sync with the stars
-        updateCelestialParameters();
-        
-        statusText.innerText = "Engine is Ready"; 
-        statusText.style.color = "#34c759";
+        setupAudioEngine();
+        // Boot always uses the real current month
+        await applyMonth(new Date().getMonth(), true);
+        updateCelestialParameters(false);
     } catch(e) {
-        statusText.innerText = "ERROR: " + e.message; 
+        statusText.innerText = "ERROR: " + e.message;
         statusText.style.color = "#ff3b30";
         console.error(e);
     }
 }
 
-// LISTENER: TEMPO SLIDER 
-document.getElementById('tempo-slider').addEventListener('input', (e) => {
-    if (!isSystemLocked) {
-        // Trigger the central update function which handles BPM, Audio, and UI
-        updateCelestialParameters(true);
-    }
-});
-
-// LISTENER: PHASE SLIDER 
-document.getElementById('test-phase').addEventListener('input', (e) => {
-    // Only execute if System is UNLOCKED
-    if (!isSystemLocked) {
-        updateCelestialParameters(true);
-    }
-});
-
-const currentMonthIndex = new Date().getMonth(); // 5 for June
-const rootNote = getRootNoteForMonth(currentMonthIndex); // Returns 2
-
-// Pass the rootNote and its relative minor (root + 9)
-boot(rootNote, (rootNote + 9) % 12);
+boot();

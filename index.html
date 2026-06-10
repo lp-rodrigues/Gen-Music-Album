@@ -129,7 +129,6 @@
             </div>
         </div>
 
-
         <button id="lock-toggle-btn">🔒 System Automation: LOCKED</button>
 
         <div class="control-group">
@@ -162,45 +161,35 @@
             </div>
         </div>
 
-        <!--
-        <div class="control-group">
-            <label>Entropy Coefficient (Chaos)</label>
-            <div class="slider-wrap">
-                <input type="range" id="chaos-slider" min="0.00" max="1.00" step="0.01" value="0.05">
-                <span class="val-disp" id="chaos-val">0.05</span>
-            </div>
-        </div>
-        -->
-
         <div class="control-group">
             <label>MONTH (Key)</label>
             <select id="key-selector" style="width:100%; background:#111; color:white; padding:8px; border:1px solid #333; border-radius:4px; font-size:11px;">
-                <option value="0:9|January">January (C maj / A min)</option>
-                <option value="1:10|February">February (Db maj / Bb min)</option>
-                <option value="2:11|March">March (D maj / B min)</option>
-                <option value="3:0|April">April (Eb maj / C min)</option>
-                <option value="4:1|May">May (E maj / C# min)</option>
-                <option value="5:2|June">June (F maj / D min)</option>
-                <option value="6:3|July">July (F# maj / D# min)</option>
-                <option value="7:4|August">August (G maj / E min)</option>
-                <option value="8:5|September">September (Ab maj / F min)</option>
-                <option value="9:6|October">October (A maj / F# min)</option>
-                <option value="10:7|November">November (Bb maj / G min)</option>
-                <option value="11:8|December">December (B maj / G# min)</option>
+                <option value="0">January (C maj / A min)</option>
+                <option value="1">February (G maj / E min)</option>
+                <option value="2">March (D maj / B min)</option>
+                <option value="3">April (A maj / F# min)</option>
+                <option value="4">May (E maj / C# min)</option>
+                <option value="5">June (B maj / G# min)</option>
+                <option value="6">July (F# maj / D# min)</option>
+                <option value="7">August (Db maj / Bb min)</option>
+                <option value="8">September (Ab maj / F min)</option>
+                <option value="9">October (Eb maj / C min)</option>
+                <option value="10">November (Bb maj / G min)</option>
+                <option value="11">December (F maj / D min)</option>
             </select>
         </div>
 
         <div class="control-group">
             <label>MOON DISTANCE (Tempo)</label>
-            <input type="range" id="tempo-slider" min="25" max="100" value="60" style="width:100%">
+            <input type="range" id="tempo-slider" min="25" max="100" value="60" style="width:100%" disabled>
             <div id="mon-bpm-label" style="font-size: 11px; margin-top:5px; color:rgba(255,255,255,0.5);">BPM: 60 | Distance: 384,000km</div>
         </div>
 
         <div class="control-group">
             <label>MOON PHASE (Timbre)</label>
-            <input type="range" id="test-phase" min="0" max="1" step="0.01" value="0.5" style="width:100%">
+            <input type="range" id="test-phase" min="0" max="1" step="0.01" value="0.5" style="width:100%" disabled>
             <div id="celestial-monitor" style="font-size: 11px; color: #888; font-family: monospace;">
-                Phase: <span id="mon-phase">New Moon</span> | Dist: <span id="mon-dist">0</span> | Freq: <span id="mon-freq">0</span>Hz | Distort: <span id="mon-distort">0</span>
+                Phase: <span id="mon-phase">—</span> | Freq: <span id="mon-freq">—</span>Hz | Distort: <span id="mon-distort">—</span>
             </div>
         </div>
 
