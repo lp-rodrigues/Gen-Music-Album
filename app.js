@@ -320,10 +320,12 @@ function setupAudioEngine() {
 
 function processAutomatedBarycentricInfluence() {
     if (!isSystemLocked) return;
-    const centerX = canvas.width / 2, centerY = canvas.height / 2;
-    const d1 = Math.sqrt((musicBoxes[0].x - centerX)**2 + (musicBoxes[0].y - centerY)**2);
-    const d2 = Math.sqrt((musicBoxes[1].x - centerX)**2 + (musicBoxes[1].y - centerY)**2);
-    const d3 = Math.sqrt((musicBoxes[2].x - centerX)**2 + (musicBoxes[2].y - centerY)**2);
+    // Use the centre of the lamp's illuminated area, not the screen centre
+    const cx = lampLightCenterX || canvas.width / 2;
+    const cy = lampLightCenterY || canvas.height * 0.75;
+    const d1 = Math.sqrt((musicBoxes[0].x - cx)**2 + (musicBoxes[0].y - cy)**2);
+    const d2 = Math.sqrt((musicBoxes[1].x - cx)**2 + (musicBoxes[1].y - cy)**2);
+    const d3 = Math.sqrt((musicBoxes[2].x - cx)**2 + (musicBoxes[2].y - cy)**2);
     const maxRadius = 600;
     let s1 = Math.max(0.01, maxRadius - d1), s2 = Math.max(0.01, maxRadius - d2), s3 = Math.max(0.01, maxRadius - d3);
     const total = s1 + s2 + s3;
@@ -554,8 +556,10 @@ let musicBoxes = [
 
 let draggedMusicBox = null;
 
-// Lamp position — starts centered, stays fixed (ceiling lamp)
+// Lamp position — floor lamp, left side
 let lampPos = { x: 0, y: 0 };
+// Centre of the lamp's illuminated area (computed each frame inside drawLamp)
+let lampLightCenterX = 0, lampLightCenterY = 0;
 
 function initCelestialLayout() {
     canvas.width  = window.innerWidth;
@@ -566,9 +570,9 @@ function initCelestialLayout() {
     musicBoxes[1].x = canvas.width * 0.25;   musicBoxes[1].y = canvas.height * 0.78;
     musicBoxes[2].x = canvas.width * 0.75;   musicBoxes[2].y = canvas.height * 0.78;
 
-    // Candeeiro de chão — lado esquerdo, base no fundo
+    // Candeeiro de chão — lado esquerdo, mais alto
     lampPos.x = canvas.width * 0.12;
-    lampPos.y = canvas.height * 0.55;   // centro da haste; base fica mais abaixo
+    lampPos.y = canvas.height * 0.38;   // mais alto = candeeiro mais alto
 
     if (isSystemLocked) {
         weights = { w1: 0.33, w2: 0.33, w3: 0.33 };
@@ -588,75 +592,88 @@ function isoProject(x, y, z) {
 // ─── CANDEEIRO DE CHÃO ───────────────────────────────────────────────────────
 function drawLamp() {
     const lx   = lampPos.x;
-    const base = canvas.height - 30;   // base no chão
-    const head = lampPos.y;            // onde está o abajur
+    const base = canvas.height - 30;
+    const head = lampPos.y;   // topo da haste / centro do abajur
 
     // Haste vertical
     ctx.strokeStyle = 'rgba(160, 140, 100, 0.55)';
     ctx.lineWidth   = 3;
     ctx.beginPath();
     ctx.moveTo(lx, base);
-    ctx.lineTo(lx, head + 14);
+    ctx.lineTo(lx, head);
     ctx.stroke();
 
-    // Base do candeeiro (pequeno arco/pé)
+    // Base (pé)
     ctx.strokeStyle = 'rgba(160, 140, 100, 0.4)';
     ctx.lineWidth   = 3;
     ctx.beginPath();
-    ctx.moveTo(lx - 18, base);
-    ctx.lineTo(lx + 18, base);
+    ctx.moveTo(lx - 20, base);
+    ctx.lineTo(lx + 20, base);
     ctx.stroke();
 
     // Braço curvo para o abajur
     ctx.strokeStyle = 'rgba(160, 140, 100, 0.45)';
     ctx.lineWidth   = 2.5;
     ctx.beginPath();
-    ctx.moveTo(lx, head + 14);
-    ctx.quadraticCurveTo(lx + 28, head + 8, lx + 38, head - 10);
+    ctx.moveTo(lx, head);
+    ctx.quadraticCurveTo(lx + 30, head - 5, lx + 42, head - 22);
     ctx.stroke();
 
-    // Abajur (trapezóide) centrado no fim do braço
-    const ax = lx + 38, ay = head - 10;
+    // Abajur invertido — lado maior em baixo (abre para baixo como um candeeiro real)
+    const ax = lx + 42, ay = head - 22;
+    // topo estreito, base larga
     ctx.beginPath();
-    ctx.moveTo(ax - 24, ay - 12);
-    ctx.lineTo(ax + 24, ay - 12);
-    ctx.lineTo(ax + 16, ay + 14);
-    ctx.lineTo(ax - 16, ay + 14);
+    ctx.moveTo(ax - 12, ay - 14);   // topo esquerdo (estreito)
+    ctx.lineTo(ax + 12, ay - 14);   // topo direito
+    ctx.lineTo(ax + 28, ay + 12);   // base direita (larga)
+    ctx.lineTo(ax - 28, ay + 12);   // base esquerda
     ctx.closePath();
-    ctx.fillStyle   = 'rgba(210, 185, 120, 0.20)';
-    ctx.strokeStyle = 'rgba(210, 185, 120, 0.50)';
+    ctx.fillStyle   = 'rgba(210, 185, 120, 0.22)';
+    ctx.strokeStyle = 'rgba(210, 185, 120, 0.55)';
     ctx.lineWidth   = 1;
     ctx.fill();
     ctx.stroke();
 
-    // Ponto de luz (bulbo)
+    // Ponto de luz (bulbo) na base do abajur
+    const bx = ax, by = ay + 12;
     ctx.beginPath();
-    ctx.arc(ax, ay + 14, 4, 0, Math.PI * 2);
+    ctx.arc(bx, by, 4, 0, Math.PI * 2);
     ctx.fillStyle = 'rgba(255, 245, 190, 0.95)';
     ctx.fill();
 
-    // Cone de luz — emana do bulbo para a direita e para baixo
-    const bx = ax, by = ay + 14;
-    const coneH    = canvas.height * 0.80;
-    const coneW    = canvas.height * 0.65;
+    // Halo imediato do bulbo
+    const halo = ctx.createRadialGradient(bx, by, 0, bx, by, 30);
+    halo.addColorStop(0,   'rgba(255, 245, 190, 0.18)');
+    halo.addColorStop(1,   'rgba(0, 0, 0, 0)');
+    ctx.beginPath(); ctx.arc(bx, by, 30, 0, Math.PI * 2);
+    ctx.fillStyle = halo; ctx.fill();
+
+    // Cone de luz grande — do bulbo para baixo/direita, cobre as caixas
+    const coneH    = canvas.height * 1.1;
+    const coneW    = canvas.height * 0.90;
     const coneGrad = ctx.createRadialGradient(bx, by, 0, bx, by, coneH);
-    coneGrad.addColorStop(0,    'rgba(255, 240, 180, 0.11)');
-    coneGrad.addColorStop(0.40, 'rgba(255, 230, 150, 0.045)');
+    coneGrad.addColorStop(0,    'rgba(255, 240, 180, 0.13)');
+    coneGrad.addColorStop(0.35, 'rgba(255, 230, 150, 0.055)');
     coneGrad.addColorStop(1,    'rgba(0, 0, 0, 0)');
     ctx.beginPath();
     ctx.moveTo(bx, by);
-    ctx.lineTo(bx - coneW * 0.4, canvas.height);
-    ctx.lineTo(bx + coneW,       canvas.height);
+    ctx.lineTo(bx - coneW * 0.35, canvas.height);
+    ctx.lineTo(bx + coneW,        canvas.height);
     ctx.closePath();
     ctx.fillStyle = coneGrad;
     ctx.fill();
+
+    // Guardar o centro do cone para uso nos pesos
+    // O centro geométrico do cone ao nível das caixas é ~2/3 do caminho entre bx e bx+coneW
+    lampLightCenterX = bx + coneW * 0.33;
+    lampLightCenterY = canvas.height * 0.75;
 }
 
 // ─── JANELA COM LUA (parede do topo) ─────────────────────────────────────────
 function drawWindow() {
-    const winW = 200, winH = 200;
+    const winW = 460, winH = 240;
     const wx   = canvas.width / 2 - winW / 2;
-    const wy   = 20;   // topo da cena
+    const wy   = 80;   // um pouco abaixo do título
 
     // Fundo (céu noturno)
     ctx.fillStyle = '#03030a';
@@ -672,23 +689,34 @@ function drawWindow() {
     ctx.lineWidth   = 2;
     ctx.strokeRect(wx + 5, wy + 5, winW - 10, winH - 10);
 
-    // Lua
+    // Lua — técnica de offset corrigida:
+    // phase=0 → Lua Nova (escura), phase=0.5 → Lua Cheia (clara)
+    // O offset move a sombra: (0.5 - phase) faz com que phase=0.5 → offset=0 (lua cheia visível)
+    // e phase=0 ou 1 → offset=±moonR*2 (lua coberta = lua nova)
+    const moonR = 46;
     const mx = wx + winW / 2;
     const my = wy + winH / 2;
+
     ctx.save();
     ctx.beginPath();
     ctx.rect(wx + 2, wy + 2, winW - 4, winH - 4);
     ctx.clip();
 
+    // Disco lunar base iluminado (fixo)
     ctx.beginPath();
-    ctx.arc(mx, my, 32, 0, Math.PI * 2);
+    ctx.arc(mx, my, moonR, 0, Math.PI * 2);
     ctx.fillStyle = '#dddbc8';
     ctx.fill();
 
-    // Sombra de fase — offset horizontal baseado em currentPhase
-    const shadowOffset = (currentPhase - 0.5) * 64;
+    // Máscara escura móvel que cria as fases:
+    // phase=0/1 => new moon (máscara centralizada, inteira); phase=0.5 => full moon (máscara fora);
+    const phaseFactor = 1 - Math.abs(currentPhase - 0.5) * 2;
+    const shadowShift = phaseFactor * moonR * 2;
+    const shadowDirection = currentPhase < 0.5 ? -1 : 1;
+    const shadowX = mx + shadowDirection * shadowShift;
+
     ctx.beginPath();
-    ctx.arc(mx + shadowOffset, my, 32, 0, Math.PI * 2);
+    ctx.arc(shadowX, my, moonR, 0, Math.PI * 2);
     ctx.fillStyle = '#03030a';
     ctx.fill();
 
