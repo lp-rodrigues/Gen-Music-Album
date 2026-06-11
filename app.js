@@ -22,7 +22,7 @@ let activeTargetMusicBoxId = 1;
 const DIST_MIN = 363000;
 const DIST_MAX = 406000;
 const BPM_MIN  = 25;
-const BPM_MAX  = 100;
+const BPM_MAX  = 70;
 
 let currentBpm   = 60;
 let currentPhase = 0;
@@ -33,9 +33,8 @@ let currentPhase = 0;
    # Connect HTML interface elements to their JavaScript controls and display nodes.
    ========================================================================= */
 
-const statusText      = document.getElementById('status-text');
+const statusText       = document.getElementById('status-text');
 const hudVectorDisplay = document.getElementById('live-vector-display');
-const debugText       = document.getElementById('blend-display-debug');
 
 const playBtn  = document.getElementById('main-art-toggle');
 const lockBtn  = document.getElementById('lock-toggle-btn');
@@ -45,8 +44,6 @@ const midi2Btn = document.getElementById('midi2-btn');
 const midi3Btn = document.getElementById('midi3-btn');
 
 const tempoSlider = document.getElementById('tempo-slider');
-const tempoVal    = document.getElementById('tempo-val');
-const chaosSlider = document.getElementById('chaos-slider');
 
 const w1Slider = document.getElementById('w1-slider'), w1Val = document.getElementById('w1-val');
 const w2Slider = document.getElementById('w2-slider'), w2Val = document.getElementById('w2-val');
@@ -217,7 +214,7 @@ function getMoonPhaseName(phase) {
     return "Waning Crescent";
 }
 
-function updateCelestialParameters(isManual = false) {
+async function updateCelestialParameters(isManual = false) {
     let distance, distortionAmount;
 
     if (isManual) {
@@ -228,9 +225,9 @@ function updateCelestialParameters(isManual = false) {
         const now      = new Date();
         const moonIllum = SunCalc.getMoonIllumination(now);
         currentPhase   = moonIllum.phase;
-        distance       = SunCalc.getMoonPosition(now, 0, 0).distance;
+        distance       = SunCalc.getMoonPosition(now, 41.15, -8.63).distance; // Porto, Portugal
         currentBpm     = mapValue(distance, DIST_MIN, DIST_MAX, BPM_MAX, BPM_MIN);
-        applyMonth(now.getMonth());
+        await applyMonth(now.getMonth());
     }
 
     const peakAtFullMoon  = 1 - (Math.abs(currentPhase - 0.5) * 2);
@@ -342,7 +339,6 @@ function processAutomatedBarycentricInfluence() {
     w1Slider.value = Math.round(weights.w1 * 100); w1Val.innerText = w1Slider.value + "%";
     w2Slider.value = Math.round(weights.w2 * 100); w2Val.innerText = w2Slider.value + "%";
     w3Slider.value = Math.round(weights.w3 * 100); w3Val.innerText = w3Slider.value + "%";
-    if (debugText) debugText.innerText = `Song 1: ${w1Slider.value}% | Song 2: ${w2Slider.value}% | Song 3: ${w3Slider.value}%`;
 }
 
 function selectBrainFromTernary(brainA, brainB, brainC) {
@@ -354,7 +350,7 @@ function selectBrainFromTernary(brainA, brainB, brainC) {
 
 function triggerHarmonyGeneration(time) {
     if (!isPlayingGenerative) return;
-    const wanderFactor = chaosSlider ? parseFloat(chaosSlider.value) : 0.15;
+    const wanderFactor = 0.15; // fixed default; adjustable via manual controls if added
     const activeBrain  = selectBrainFromTernary(harmonyBrainA, harmonyBrainB, harmonyBrainC);
     if (!currentChordState) currentChordState = activeBrain.states[0] || { notes: "C3-E3-G3", duration: "2n" };
 
@@ -378,7 +374,7 @@ function triggerHarmonyGeneration(time) {
 
 function triggerMelodyGeneration(time) {
     if (!isPlayingGenerative) return;
-    const wanderFactor = chaosSlider ? parseFloat(chaosSlider.value) : 0.15;
+    const wanderFactor = 0.15; // fixed default; adjustable via manual controls if added
     const activeBrain  = selectBrainFromTernary(melodyBrainA, melodyBrainB, melodyBrainC);
     if (!currentMelodyState) currentMelodyState = activeBrain.states[0] || { pitch: "C4", duration: "8n", velocity: 0.6, isPause: false };
 
@@ -542,7 +538,6 @@ function handleManualWeightMixUpdate() {
     w1Val.innerText = `${Math.round(weights.w1*100)}%`;
     w2Val.innerText = `${Math.round(weights.w2*100)}%`;
     w3Val.innerText = `${Math.round(weights.w3*100)}%`;
-    if (debugText) debugText.innerText = `Song 1: ${Math.round(weights.w1*100)}% | Song 2: ${Math.round(weights.w2*100)}% | Song 3: ${Math.round(weights.w3*100)}%`;
 }
 if (w1Slider) w1Slider.addEventListener('input', handleManualWeightMixUpdate);
 if (w2Slider) w2Slider.addEventListener('input', handleManualWeightMixUpdate);
@@ -557,7 +552,7 @@ if (w3Slider) w3Slider.addEventListener('input', handleManualWeightMixUpdate);
 const canvas = document.getElementById('art-surface');
 const ctx    = canvas.getContext('2d');
 
-let moon = { x: window.innerWidth / 2, y: window.innerHeight * 0.75, vx: 2, vy: -1.5, radius: 3, attractionRadius: 400 };
+let firefly = { x: window.innerWidth / 2, y: window.innerHeight * 0.75, vx: 2, vy: -1.5, radius: 3, attractionRadius: 400 };
 
 let musicBoxes = [
     { id: 1, x: 0, y: 0, rad: 16, length: 50, rotation: 0, color: "#ff3b30", active: true },
@@ -577,9 +572,9 @@ function initCelestialLayout() {
     canvas.height = window.innerHeight;
 
     // Place the boxes on the lower third of the room floor
-    musicBoxes[0].x = canvas.width / 2;      musicBoxes[0].y = canvas.height * 0.72;
-    musicBoxes[1].x = canvas.width * 0.25;   musicBoxes[1].y = canvas.height * 0.78;
-    musicBoxes[2].x = canvas.width * 0.75;   musicBoxes[2].y = canvas.height * 0.78;
+    musicBoxes[0].x = canvas.width * 0.30;  musicBoxes[0].y = canvas.height * 0.74;
+    musicBoxes[1].x = canvas.width * 0.18;  musicBoxes[1].y = canvas.height * 0.80;
+    musicBoxes[2].x = canvas.width * 0.42;  musicBoxes[2].y = canvas.height * 0.80; 
 
     // Floor lamp on the left side, positioned higher than the boxes
     lampPos.x = canvas.width * 0.12;
@@ -603,7 +598,7 @@ function isoProject(x, y, z) {
 // ─── FLOOR LAMP ───────────────────────────────────────────────────────────
 function drawLamp() {
     const lx   = lampPos.x;
-    const base = canvas.height - 30;
+    const base = canvas.height - 190;
     const head = lampPos.y;   // top of the pole / centre of the lampshade
 
     // Haste vertical
@@ -682,9 +677,9 @@ function drawLamp() {
 
 // ─── MOON WINDOW ───────────────────────────────────────────────────────────
 function drawWindow() {
-    const winW = 460, winH = 240;
+    const winW = 660, winH = 340;
     const wx   = canvas.width / 2 - winW / 2;
-    const wy   = 80;   // um pouco abaixo do título
+    const wy   = 110;   // um pouco abaixo do título
 
     // Background sky inside the moon window
     ctx.fillStyle = '#03030a';
@@ -822,9 +817,9 @@ function advanceCelestialPhysics() {
 
     musicBoxes.forEach(p => {
         const dx = p.x - centerX, dy = p.y - centerY;
-        p.active = Math.sqrt(dx*dx + dy*dy) < moon.attractionRadius;
+        p.active = Math.sqrt(dx*dx + dy*dy) < firefly.attractionRadius;
 
-        const fDist = Math.sqrt((p.x - moon.x)**2 + (p.y - moon.y)**2);
+        const fDist = Math.sqrt((p.x - firefly.x)**2 + (p.y - firefly.y)**2);
         // Increase radius to 350px so the light influence reaches all boxes
         const lInt  = Math.max(0, 1 - (fDist / 350));
         const isAuditioningThisTrack = (p.id === 1 && isPlayingOrig1) || (p.id === 2 && isPlayingOrig2) || (p.id === 3 && isPlayingOrig3);
@@ -845,24 +840,24 @@ function advanceCelestialPhysics() {
         const pull = 0.54, friction = 0.94;
         const targetP = musicBoxes.find(p => p.id === activeTargetMusicBoxId) || musicBoxes[0];
 
-        const tDx = targetP.x - moon.x, tDy = targetP.y - moon.y;
+        const tDx = targetP.x - firefly.x, tDy = targetP.y - firefly.y;
         const tD  = Math.sqrt(tDx*tDx + tDy*tDy);
-        if (tD > 10) { moon.vx += (tDx/tD) * pull; moon.vy += (tDy/tD) * pull; }
+        if (tD > 10) { firefly.vx += (tDx/tD) * pull; firefly.vy += (tDy/tD) * pull; }
 
-        const cDx = centerX - moon.x, cDy = centerY - moon.y, cD = Math.sqrt(cDx*cDx + cDy*cDy);
-        if (cD > 10) { moon.vx += (cDx/cD) * 0.12; moon.vy += (cDy/cD) * 0.12; }
+        const cDx = centerX - firefly.x, cDy = centerY - firefly.y, cD = Math.sqrt(cDx*cDx + cDy*cDy);
+        if (cD > 10) { firefly.vx += (cDx/cD) * 0.12; firefly.vy += (cDy/cD) * 0.12; }
 
-        moon.vx += (Math.random()-0.5)*0.5; moon.vx *= friction; moon.vy *= friction;
-        moon.x  += moon.vx; moon.y += moon.vy;
+        firefly.vx += (Math.random()-0.5)*0.5; firefly.vx *= friction; firefly.vy *= friction;
+        firefly.x  += firefly.vx; firefly.y += firefly.vy;
     }
 
     // ── Firefly render ──
-    const glow = ctx.createRadialGradient(moon.x, moon.y, 0, moon.x, moon.y, 44);
+    const glow = ctx.createRadialGradient(firefly.x, firefly.y, 0, firefly.x, firefly.y, 44);
     glow.addColorStop(0,    '#ffffff');
     glow.addColorStop(0.15, 'rgba(238,255,204,0.9)');
     glow.addColorStop(1,    'rgba(0,0,0,0)');
-    ctx.beginPath(); ctx.arc(moon.x, moon.y, 44, 0, Math.PI*2); ctx.fillStyle = glow; ctx.fill();
-    ctx.beginPath(); ctx.arc(moon.x, moon.y, moon.radius, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.fill();
+    ctx.beginPath(); ctx.arc(firefly.x, firefly.y, 44, 0, Math.PI*2); ctx.fillStyle = glow; ctx.fill();
+    ctx.beginPath(); ctx.arc(firefly.x, firefly.y, firefly.radius, 0, Math.PI*2); ctx.fillStyle = '#ffffff'; ctx.fill();
 
     processAutomatedBarycentricInfluence();
     requestAnimationFrame(advanceCelestialPhysics);
@@ -877,11 +872,11 @@ function advanceCelestialPhysics() {
 canvas.addEventListener('mousedown', (e) => {
     const clicked = musicBoxes.find(p => Math.sqrt((p.x-e.clientX)**2 + (p.y-e.clientY)**2) < 36);
     if (clicked) draggedMusicBox = clicked;
-    else if (!isSystemLocked) { moon.x = e.clientX; moon.y = e.clientY; moon.vx = 0; moon.vy = 0; }
+    else if (!isSystemLocked) { firefly.x = e.clientX; firefly.y = e.clientY; firefly.vx = 0; firefly.vy = 0; }
 });
 window.addEventListener('mousemove', (e) => {
     if (draggedMusicBox) { draggedMusicBox.x = e.clientX; draggedMusicBox.y = e.clientY; }
-    else if (!isSystemLocked && e.buttons === 1) { moon.x = e.clientX; moon.y = e.clientY; }
+    else if (!isSystemLocked && e.buttons === 1) { firefly.x = e.clientX; firefly.y = e.clientY; }
 });
 window.addEventListener('mouseup', () => draggedMusicBox = null);
 window.addEventListener('resize', initCelestialLayout);
@@ -900,13 +895,28 @@ if (keySelector) {
     });
 }
 
+// Extracted so the welcome modal can trigger playback after the user gesture
+function startGenerative() {
+    if (isPlayingGenerative) return;
+    setupAudioEngine();
+    isPlayingGenerative = true;
+    if (playBtn) { playBtn.innerText = "Stop Sound"; playBtn.classList.add('active-stream'); }
+    currentChordState = null; currentMelodyState = null;
+    harmonyLoopEvent = new Tone.Loop((time) => { triggerHarmonyGeneration(time); }, "2n").start(0);
+    melodyLoopEvent  = new Tone.Loop((time) => { triggerMelodyGeneration(time); },  "8n").start(0);
+    Tone.Transport.start();
+}
+
 async function boot() {
     statusText.innerText   = "Calibrating Harmonic Engine...";
     statusText.style.color = "";
     try {
         setupAudioEngine();
         await applyMonth(new Date().getMonth(), true);
-        updateCelestialParameters(false);
+        await updateCelestialParameters(false);
+        window._appBooted = true;
+        // If the user already clicked Begin before MIDI was ready, start now
+        if (window._autoStart) startGenerative();
     } catch(e) {
         statusText.innerText   = "ERROR: " + e.message;
         statusText.style.color = "#ff3b30";
