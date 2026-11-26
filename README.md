@@ -2,6 +2,7 @@
 
 **Author:** Luís Rodrigues  
 **Stack:** Vanilla JavaScript · Tone.js · @tonejs/midi · SunCalc · HTML5 Canvas
+
 **Link to test:** https://lp-rodrigues.github.io/Gen-Music-Album/
 ---
 
